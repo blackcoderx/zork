@@ -14,6 +14,7 @@ Define your data schema in Python, and Cinder auto-generates a full CRUD API wit
 - [API Endpoints](#api-endpoints)
 - [Filtering, Pagination & Sorting](#filtering-pagination--sorting)
 - [Relations & Expand](#relations--expand)
+- [Hooks & Lifecycle Events](#hooks--lifecycle-events)
 - [Middleware](#middleware)
 - [CLI](#cli)
 - [Configuration](#configuration)
@@ -616,6 +617,209 @@ GET /api/products?expand=category
 
 ---
 
+## Hooks & Lifecycle Events
+
+Cinder ships with a flexible hook system that lets you run custom logic around every CRUD operation, auth event, and app-level lifecycle moment — plus any custom event you invent yourself. Built-in events and your own events live in the same registry and run through the same async runner. Any string is a valid event name.
+
+### Registering Hooks
+
+Define your handler function, then pass it into `.on()`. Three surfaces — pick whichever fits the scope:
+
+```python
+async def add_slug(data, ctx):
+    data["slug"] = data["title"].lower().replace(" ", "-")
+    return data
+
+async def send_welcome_email(user, ctx):
+    await mailer.send(to=user["email"], subject="Welcome!")
+
+async def alert_security_team(data, ctx):
+    await slack.post(f"Fraud detected: {data}")
+
+# Collection-scoped
+posts.on("before_create", add_slug)
+
+# Auth-scoped — namespaced internally as "auth:after_register"
+auth.on("after_register", send_welcome_email)
+auth.on("email_verified", unlock_features)
+
+# App-level / cross-cutting — any event string, built-in or custom
+app.on("fraud:detected", alert_security_team)
+```
+
+This is the canonical form and matches the spec one-to-one. A decorator form is also available as sugar if you prefer to define and register in one step:
+
+```python
+@posts.on("before_create")
+async def add_slug(data, ctx):
+    data["slug"] = data["title"].lower().replace(" ", "-")
+    return data
+```
+
+Both call the exact same code path — use whichever reads better for your project.
+
+### Handler Signature
+
+Every handler receives `(payload, ctx)`:
+
+- `payload` — the data being operated on. Type depends on the event (see table below).
+- `ctx` — a `CinderContext` with `user`, `request_id`, `collection`, `operation`, `request`, and `extra`.
+
+Handlers may be **sync or async** — Cinder awaits both transparently.
+
+**Mutation rule:** `before_*` handlers mutate the payload by **returning it**. Returning `None` leaves the payload unchanged. `after_*` handlers can return `None` — their return value is ignored by the runner.
+
+### Built-in Events
+
+Fired automatically around every CRUD operation:
+
+| Event | Payload | Mutable? |
+|-------|---------|----------|
+| `{collection}:before_create` | incoming data dict | yes (return mutated dict) |
+| `{collection}:after_create` | saved record dict | no |
+| `{collection}:before_read` | record id (string) | yes |
+| `{collection}:after_read` | fetched record dict | yes |
+| `{collection}:before_list` | `{filters, order_by, limit, offset}` dict | yes |
+| `{collection}:after_list` | list of records | yes |
+| `{collection}:before_update` | incoming update dict | yes |
+| `{collection}:after_update` | `(new_record, previous_record)` tuple | no |
+| `{collection}:before_delete` | record about to be deleted | no (see cancel-delete) |
+| `{collection}:after_delete` | deleted record | no |
+
+Auth events:
+
+```
+auth:before_register    auth:after_register
+auth:before_login       auth:after_login
+auth:before_logout      auth:after_logout
+auth:before_password_reset    auth:after_password_reset
+```
+
+App-level events:
+
+```
+app:startup     app:shutdown     app:error
+```
+
+### Example: Slugify on Create
+
+```python
+from cinder import Cinder, Collection, TextField
+
+app = Cinder(database="app.db")
+posts = Collection("posts", fields=[
+    TextField("title", required=True),
+    TextField("slug"),
+])
+app.register(posts, auth=["read:public", "write:authenticated"])
+
+async def add_slug(data, ctx):
+    data["slug"] = data["title"].lower().replace(" ", "-")
+    return data
+
+posts.on("before_create", add_slug)
+```
+
+### Example: Aborting an Operation
+
+Raise `CinderError` from any hook to stop the chain and return an error response:
+
+```python
+from cinder.errors import CinderError
+
+async def protect_pinned(record, ctx):
+    if record.get("pinned"):
+        raise CinderError(403, "Pinned posts cannot be deleted")
+
+posts.on("before_delete", protect_pinned)
+```
+
+### Example: Soft Delete
+
+Use the `cancel_delete()` sentinel to skip the actual DB delete without returning an error — handy for soft-delete patterns:
+
+```python
+async def soft_delete(record, ctx):
+    await db.execute(
+        "UPDATE messages SET is_deleted = 1 WHERE id = ?", (record["id"],)
+    )
+    raise CinderError.cancel_delete()
+
+messages.on("before_delete", soft_delete)
+```
+
+`DELETE /api/messages/{id}` still returns `200 OK` and the record stays in the database with `is_deleted = 1`.
+
+### Custom Events
+
+Any string is a valid event name. You don't register event names upfront — just fire them.
+
+```python
+# Handlers for the custom event — same API as built-ins
+async def trigger_shipping(record, ctx):
+    await create_shipment(record)
+
+async def send_receipt(record, ctx):
+    await email_receipt(record)
+
+orders.on("payment_confirmed", trigger_shipping)
+orders.on("payment_confirmed", send_receipt)
+
+# Fire the custom event from inside a built-in hook
+async def on_payment_updated(payload, ctx):
+    record, prev = payload
+    if record["status"] == "paid" and prev["status"] == "pending":
+        await orders.fire("payment_confirmed", record, ctx)
+
+orders.on("after_update", on_payment_updated)
+```
+
+Cross-collection events live on the app-level bus:
+
+```python
+async def suspend_account(data, ctx): ...
+async def notify_security(data, ctx): ...
+
+app.on("fraud:detected", suspend_account)
+app.on("fraud:detected", notify_security)
+
+# Fire from anywhere
+await app.hooks.fire("fraud:detected", {"user_id": "..."}, ctx)
+```
+
+Firing an event with zero registered handlers is a no-op — no error raised.
+
+### App Lifecycle
+
+```python
+async def seed(_, ctx):
+    # Called once when the server starts (inside Starlette's lifespan)
+    await seed_database()
+
+async def cleanup(_, ctx):
+    await flush_queues()
+
+async def log_error(exc, ctx):
+    # Fired on any unhandled 500. Never masks the original response.
+    await sentry.capture(exc, request_id=ctx.request_id)
+
+app.on("app:startup", seed)
+app.on("app:shutdown", cleanup)
+app.on("app:error", log_error)
+```
+
+### Rules of Thumb
+
+- Handlers execute in **registration order**, always.
+- `before_*` hooks mutate by **returning** the payload; `None` means "unchanged".
+- `after_*` hooks are fire-and-forget — return value ignored.
+- Raising `CinderError` stops the chain and returns an error response to the client.
+- `CinderError.cancel_delete()` stops the chain **without** an error — used for soft deletes.
+- There is **one shared registry** per app, namespaced by event string. Collection / auth / app-level `on()` calls all land in the same place, so you can observe any event from any surface.
+- Hook loop prevention is your responsibility — use guard clauses (`if record["already_processed"]: return`).
+
+---
+
 ## Middleware
 
 Cinder includes three built-in middleware layers applied to every request:
@@ -743,7 +947,7 @@ Cinder uses WAL mode for better concurrent read performance and enables foreign 
 
 See [phases.md](phases.md) for the full roadmap of upcoming features:
 
-- **Phase 3** — Hooks & Lifecycle Events
+- **Phase 3** — Hooks & Lifecycle Events ✅
 - **Phase 4** — File Storage (local + S3)
 - **Phase 5** — Email & Notifications
 - **Phase 6** — Realtime (WebSocket subscriptions)
