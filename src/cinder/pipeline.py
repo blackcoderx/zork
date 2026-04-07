@@ -9,6 +9,8 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from cinder.errors import CinderError
 from cinder.auth.tokens import decode_token
 from cinder.auth.models import is_blocked
+from cinder.hooks.context import CinderContext
+from cinder.hooks.runner import HookRunner
 
 logger = logging.getLogger("cinder.pipeline")
 
@@ -20,12 +22,21 @@ async def _handle_cinder_error(request: Request, exc: CinderError) -> JSONRespon
     )
 
 
-async def _handle_unhandled_error(request: Request, exc: Exception) -> JSONResponse:
-    logger.exception("Unhandled error: %s", exc)
-    return JSONResponse(
-        {"status": 500, "error": "Internal server error"},
-        status_code=500,
-    )
+def _make_unhandled_error_handler(runner: HookRunner | None):
+    async def _handle_unhandled_error(request: Request, exc: Exception) -> JSONResponse:
+        logger.exception("Unhandled error: %s", exc)
+        if runner is not None:
+            try:
+                ctx = CinderContext.from_request(request, operation="error")
+                await runner.fire("app:error", exc, ctx)
+            except Exception:
+                # A failing error hook must never mask the original error.
+                logger.exception("app:error hook raised")
+        return JSONResponse(
+            {"status": 500, "error": "Internal server error"},
+            status_code=500,
+        )
+    return _handle_unhandled_error
 
 
 class ErrorHandlerMiddleware:
@@ -116,6 +127,7 @@ def build_middleware_stack(
     *,
     db=None,
     secret: str | None = None,
+    hook_runner: HookRunner | None = None,
 ) -> ASGIApp:
     """Wrap the app with the standard Cinder middleware stack.
 
@@ -132,7 +144,7 @@ def build_middleware_stack(
 
     if isinstance(app, Starlette):
         app.add_exception_handler(CinderError, _handle_cinder_error)
-        app.add_exception_handler(Exception, _handle_unhandled_error)
+        app.add_exception_handler(Exception, _make_unhandled_error_handler(hook_runner))
 
     # Auth (innermost, closest to routes)
     if db is not None and secret is not None:

@@ -8,7 +8,8 @@ from typing import Any
 
 from cinder.collections.schema import Collection, BoolField, DateTimeField, JSONField
 from cinder.db.connection import Database
-from cinder.errors import CinderError
+from cinder.errors import CANCEL_DELETE_MESSAGE, CinderError
+from cinder.hooks.context import CinderContext
 
 logger = logging.getLogger("cinder.collections.store")
 
@@ -51,7 +52,14 @@ class CollectionStore:
                     f"but is not in the schema. It will NOT be dropped."
                 )
 
-    async def create(self, collection: Collection, data: dict) -> dict:
+    async def create(
+        self, collection: Collection, data: dict, ctx: CinderContext | None = None
+    ) -> dict:
+        ctx = ctx or CinderContext(collection=collection.name, operation="create")
+        data = await collection._runner.run(
+            f"{collection.name}:before_create", data, ctx
+        )
+
         model = collection.build_pydantic_model()
         validated = model(**data)
         record = validated.model_dump()
@@ -82,15 +90,29 @@ class CollectionStore:
             values,
         )
 
-        return self._deserialize(collection, record)
+        saved = self._deserialize(collection, record)
+        await collection._runner.run(
+            f"{collection.name}:after_create", saved, ctx
+        )
+        return saved
 
-    async def get(self, collection: Collection, id: str) -> dict | None:
+    async def get(
+        self, collection: Collection, id: str, ctx: CinderContext | None = None
+    ) -> dict | None:
+        ctx = ctx or CinderContext(collection=collection.name, operation="read")
+        id = await collection._runner.run(
+            f"{collection.name}:before_read", id, ctx
+        )
         row = await self.db.fetch_one(
             f"SELECT * FROM {collection.name} WHERE id = ?", (id,)
         )
         if row is None:
             return None
-        return self._deserialize(collection, dict(row))
+        record = self._deserialize(collection, dict(row))
+        record = await collection._runner.run(
+            f"{collection.name}:after_read", record, ctx
+        )
+        return record
 
     async def list(
         self,
@@ -100,7 +122,23 @@ class CollectionStore:
         order_by: str = "created_at",
         limit: int = 20,
         offset: int = 0,
+        ctx: CinderContext | None = None,
     ) -> tuple[list[dict], int]:
+        ctx = ctx or CinderContext(collection=collection.name, operation="list")
+        query_desc: dict[str, Any] = {
+            "filters": dict(filters) if filters else {},
+            "order_by": order_by,
+            "limit": limit,
+            "offset": offset,
+        }
+        query_desc = await collection._runner.run(
+            f"{collection.name}:before_list", query_desc, ctx
+        )
+        filters = query_desc.get("filters") or None
+        order_by = query_desc.get("order_by", order_by)
+        limit = query_desc.get("limit", limit)
+        offset = query_desc.get("offset", offset)
+
         where_clauses: list[str] = []
         params: list[Any] = []
 
@@ -127,14 +165,26 @@ class CollectionStore:
         rows = await self.db.fetch_all(query, tuple(params))
 
         items = [self._deserialize(collection, dict(r)) for r in rows]
+        items = await collection._runner.run(
+            f"{collection.name}:after_list", items, ctx
+        )
         return items, total
 
     async def update(
-        self, collection: Collection, id: str, data: dict
+        self,
+        collection: Collection,
+        id: str,
+        data: dict,
+        ctx: CinderContext | None = None,
     ) -> dict | None:
-        existing = await self.get(collection, id)
+        ctx = ctx or CinderContext(collection=collection.name, operation="update")
+        existing = await self._raw_get(collection, id)
         if existing is None:
             return None
+
+        data = await collection._runner.run(
+            f"{collection.name}:before_update", data, ctx
+        )
 
         if data:
             model = collection.build_pydantic_model()
@@ -173,16 +223,45 @@ class CollectionStore:
             tuple(params),
         )
 
-        return await self.get(collection, id)
+        updated = await self._raw_get(collection, id)
+        await collection._runner.run(
+            f"{collection.name}:after_update", (updated, existing), ctx
+        )
+        return updated
 
-    async def delete(self, collection: Collection, id: str) -> bool:
-        existing = await self.get(collection, id)
+    async def delete(
+        self, collection: Collection, id: str, ctx: CinderContext | None = None
+    ) -> bool:
+        ctx = ctx or CinderContext(collection=collection.name, operation="delete")
+        existing = await self._raw_get(collection, id)
         if existing is None:
             return False
+        try:
+            await collection._runner.run(
+                f"{collection.name}:before_delete", existing, ctx
+            )
+        except CinderError as e:
+            if e.message == CANCEL_DELETE_MESSAGE:
+                # Soft-delete / handled manually — skip the DB delete but
+                # report success to the caller.
+                return True
+            raise
         await self.db.execute(
             f"DELETE FROM {collection.name} WHERE id = ?", (id,)
         )
+        await collection._runner.run(
+            f"{collection.name}:after_delete", existing, ctx
+        )
         return True
+
+    async def _raw_get(self, collection: Collection, id: str) -> dict | None:
+        """Internal fetch that bypasses read hooks."""
+        row = await self.db.fetch_one(
+            f"SELECT * FROM {collection.name} WHERE id = ?", (id,)
+        )
+        if row is None:
+            return None
+        return self._deserialize(collection, dict(row))
 
     def _deserialize(self, collection: Collection, record: dict) -> dict:
         for field in collection.fields:

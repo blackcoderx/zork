@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from cinder.collections.schema import Collection, RelationField
 from cinder.collections.store import CollectionStore
 from cinder.errors import CinderError
+from cinder.hooks.context import CinderContext
 
 
 def build_collection_routes(
@@ -61,8 +62,9 @@ def _routes_for_collection(
         order_by = params.pop("order_by", "created_at")
         expand_fields = params.pop("expand", "").split(",") if "expand" in params else []
         filters = params if params else None
+        ctx = CinderContext.from_request(request, collection=collection.name, operation="list")
         items, total = await store.list(
-            collection, filters=filters, order_by=order_by, limit=limit, offset=offset
+            collection, filters=filters, order_by=order_by, limit=limit, offset=offset, ctx=ctx,
         )
         if read_rule == "owner":
             user = getattr(request.state, "user", None)
@@ -82,7 +84,8 @@ def _routes_for_collection(
     async def get_record(request: Request) -> JSONResponse:
         _check_auth(request, read_rule)
         record_id = request.path_params["id"]
-        record = await store.get(collection, record_id)
+        ctx = CinderContext.from_request(request, collection=collection.name, operation="read")
+        record = await store.get(collection, record_id, ctx=ctx)
         if record is None:
             raise CinderError(404, "Record not found")
         if read_rule == "owner":
@@ -101,8 +104,9 @@ def _routes_for_collection(
             user = getattr(request.state, "user", None)
             if user:
                 body["created_by"] = user["id"]
+        ctx = CinderContext.from_request(request, collection=collection.name, operation="create")
         try:
-            record = await store.create(collection, body)
+            record = await store.create(collection, body, ctx=ctx)
         except ValidationError as e:
             raise CinderError(400, str(e))
         return JSONResponse(record, status_code=201)
@@ -116,8 +120,9 @@ def _routes_for_collection(
                 raise CinderError(404, "Record not found")
             _check_owner(request, existing)
         body = await request.json()
+        ctx = CinderContext.from_request(request, collection=collection.name, operation="update")
         try:
-            record = await store.update(collection, record_id, body)
+            record = await store.update(collection, record_id, body, ctx=ctx)
         except ValidationError as e:
             raise CinderError(400, str(e))
         if record is None:
@@ -132,7 +137,8 @@ def _routes_for_collection(
             if existing is None:
                 raise CinderError(404, "Record not found")
             _check_owner(request, existing)
-        deleted = await store.delete(collection, record_id)
+        ctx = CinderContext.from_request(request, collection=collection.name, operation="delete")
+        deleted = await store.delete(collection, record_id, ctx=ctx)
         if not deleted:
             raise CinderError(404, "Record not found")
         return JSONResponse({"message": "Record deleted"})

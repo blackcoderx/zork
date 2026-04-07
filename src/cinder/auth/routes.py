@@ -16,6 +16,7 @@ from cinder.auth.passwords import hash_password, verify_password
 from cinder.auth.tokens import create_token, decode_token
 from cinder.db.connection import Database
 from cinder.errors import CinderError
+from cinder.hooks.context import CinderContext
 
 
 def _user_response(user: dict) -> dict:
@@ -43,12 +44,15 @@ async def _get_current_user(request: Request, db: Database, secret: str):
 
 
 def build_auth_routes(auth: Auth, db: Database, secret: str) -> list[Route]:
+    runner = auth._runner
 
     async def register(request: Request) -> JSONResponse:
         if not auth.allow_registration:
             raise CinderError(403, "Registration is disabled")
 
         body = await request.json()
+        ctx = CinderContext.from_request(request, operation="register")
+        body = await runner.run("auth:before_register", body, ctx)
         email = body.get("email")
         password = body.get("password")
         username = body.get("username")
@@ -96,14 +100,18 @@ def build_auth_routes(auth: Auth, db: Database, secret: str) -> list[Route]:
         user = await db.fetch_one(
             f"SELECT * FROM {USERS_TABLE} WHERE id = ?", (user_id,)
         )
+        user_dict = _user_response(dict(user))
+        await runner.run("auth:after_register", user_dict, ctx)
 
         return JSONResponse(
-            {"token": token, "user": _user_response(dict(user))},
+            {"token": token, "user": user_dict},
             status_code=201,
         )
 
     async def login(request: Request) -> JSONResponse:
         body = await request.json()
+        ctx = CinderContext.from_request(request, operation="login")
+        body = await runner.run("auth:before_login", body, ctx)
         email = body.get("email")
         password = body.get("password")
 
@@ -124,10 +132,15 @@ def build_auth_routes(auth: Auth, db: Database, secret: str) -> list[Route]:
             raise CinderError(403, "Account is disabled")
 
         token = create_token(user["id"], user["role"], auth.token_expiry, secret)
-        return JSONResponse({"token": token, "user": _user_response(user)})
+        user_resp = _user_response(user)
+        await runner.run("auth:after_login", user_resp, ctx)
+        return JSONResponse({"token": token, "user": user_resp})
 
     async def logout(request: Request) -> JSONResponse:
         user, payload = await _get_current_user(request, db, secret)
+        ctx = CinderContext.from_request(request, operation="logout")
+        user_resp = _user_response(user)
+        await runner.run("auth:before_logout", user_resp, ctx)
         exp = payload.get("exp", "")
         expires_at = (
             datetime.fromtimestamp(exp, tz=timezone.utc).isoformat()
@@ -135,6 +148,7 @@ def build_auth_routes(auth: Auth, db: Database, secret: str) -> list[Route]:
             else str(exp)
         )
         await block_token(db, payload["jti"], expires_at)
+        await runner.run("auth:after_logout", user_resp, ctx)
         return JSONResponse({"message": "Logged out"})
 
     async def me(request: Request) -> JSONResponse:
@@ -155,6 +169,8 @@ def build_auth_routes(auth: Auth, db: Database, secret: str) -> list[Route]:
 
     async def forgot_password(request: Request) -> JSONResponse:
         body = await request.json()
+        ctx = CinderContext.from_request(request, operation="forgot_password")
+        body = await runner.run("auth:before_password_reset", body, ctx)
         email = body.get("email")
         if not email:
             raise CinderError(400, "Email is required")
@@ -173,6 +189,7 @@ def build_auth_routes(auth: Auth, db: Database, secret: str) -> list[Route]:
             logging.getLogger("cinder.auth").info(
                 f"Password reset token for {email}: {reset_token}"
             )
+            await runner.run("auth:after_password_reset", {"email": email, "user_id": user["id"]}, ctx)
 
         return JSONResponse({
             "message": "If the email exists, a reset link has been generated"

@@ -1,3 +1,6 @@
+CANCEL_DELETE_MESSAGE = "__cancel_delete__"
+
+
 class CinderError(Exception):
     """Base exception for Cinder framework errors.
 
@@ -14,4 +17,4 @@ class CinderError(Exception):
     def cancel_delete(cls) -> "CinderError":
         """Sentinel error used in before_delete hooks to cancel the delete
         after handling it manually (e.g. soft delete)."""
-        return cls(200, "__cancel_delete__")
+        return cls(200, CANCEL_DELETE_MESSAGE)

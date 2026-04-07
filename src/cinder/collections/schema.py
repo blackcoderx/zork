@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
-from collections import defaultdict
 from datetime import datetime
 from typing import Any, Callable
 
 from pydantic import BaseModel, Field as PydanticField, AnyUrl, create_model
+
+from cinder.hooks.registry import HookRegistry
+from cinder.hooks.runner import HookRunner
 
 
 class Field:
@@ -184,11 +186,60 @@ class Collection:
     def __init__(self, name: str, fields: list[Field]):
         self.name = name
         self.fields = fields
-        self._hooks: dict[str, list[Callable]] = defaultdict(list)
+        # Each collection starts with its own registry/runner so it is
+        # usable standalone (tests, scripts). When the collection is
+        # registered on a Cinder app, ``bind_registry`` swaps in the app's
+        # shared registry and migrates any pre-registered handlers so that
+        # app-level, collection-level and auth-level hooks all live in the
+        # same place — namespaced purely by event string.
+        self._registry: HookRegistry = HookRegistry()
+        self._runner: HookRunner = HookRunner(self._registry)
 
-    def on(self, event: str, handler: Callable) -> None:
-        """Register a hook function for a collection event."""
-        self._hooks[event].append(handler)
+    def bind_registry(self, registry: HookRegistry, runner: HookRunner) -> None:
+        """Swap in a shared registry, migrating any existing handlers."""
+        if registry is self._registry:
+            return
+        for event, handlers in self._registry._hooks.items():
+            for h in handlers:
+                registry.on(event, h)
+        self._registry = registry
+        self._runner = runner
+
+    def on(self, event: str, handler: Callable | None = None):
+        """Register a hook handler for an event on this collection.
+
+        The event is namespaced as ``{collection}:{event}`` (e.g.
+        ``"before_create"`` becomes ``"posts:before_create"``). Both
+        built-in lifecycle events and arbitrary custom events use the same
+        method — any string is a valid event name.
+
+        Usable as a direct call::
+
+            posts.on("before_create", add_slug)
+
+        ...or as a decorator::
+
+            @posts.on("before_create")
+            async def add_slug(data, ctx):
+                data["slug"] = slugify(data["title"])
+                return data
+        """
+        full = f"{self.name}:{event}"
+        if handler is None:
+            def decorator(fn: Callable) -> Callable:
+                self._registry.on(full, fn)
+                return fn
+            return decorator
+        self._registry.on(full, handler)
+        return handler
+
+    async def fire(self, event: str, payload: Any, ctx: Any) -> Any:
+        """Fire an event on this collection — built-in or custom.
+
+        Equivalent to ``runner.fire(f"{collection}:{event}", ...)``. Firing
+        an event with no registered handlers is a no-op.
+        """
+        return await self._runner.fire(f"{self.name}:{event}", payload, ctx)
 
     def build_create_table_sql(self) -> str:
         """Generate CREATE TABLE SQL for this collection."""

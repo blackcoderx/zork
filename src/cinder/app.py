@@ -18,9 +18,39 @@ from cinder.collections.router import build_collection_routes
 from cinder.collections.schema import Collection, TextField
 from cinder.collections.store import CollectionStore
 from cinder.db.connection import Database
+from cinder.hooks.context import CinderContext
+from cinder.hooks.registry import HookRegistry
+from cinder.hooks.runner import HookRunner
 from cinder.pipeline import build_middleware_stack
 
 logger = logging.getLogger("cinder")
+
+
+class _AppHooks:
+    """Public facade for app-level hooks — ``app.hooks.on(...)`` / ``app.hooks.fire(...)``.
+
+    Because this wraps the app's *shared* registry, developers can register
+    handlers for any event name — built-in (``"posts:before_create"``,
+    ``"auth:after_login"``), or fully custom (``"fraud:detected"``,
+    ``"app:startup"``). Cross-collection observation and custom event
+    buses both work through this one surface.
+    """
+
+    def __init__(self, registry: HookRegistry, runner: HookRunner) -> None:
+        self._registry = registry
+        self._runner = runner
+
+    def on(self, event: str, handler=None):
+        if handler is None:
+            def decorator(fn):
+                self._registry.on(event, fn)
+                return fn
+            return decorator
+        self._registry.on(event, handler)
+        return handler
+
+    async def fire(self, event: str, payload, ctx):
+        return await self._runner.fire(event, payload, ctx)
 
 
 class Cinder:
@@ -29,6 +59,17 @@ class Cinder:
         self._collections: dict[str, tuple[Collection, dict[str, str]]] = {}
         self._auth: Auth | None = None
         self._secret: str | None = None
+        self._registry: HookRegistry = HookRegistry()
+        self._runner: HookRunner = HookRunner(self._registry)
+        self.hooks: _AppHooks = _AppHooks(self._registry, self._runner)
+
+    def on(self, event: str, handler=None):
+        """Shorthand for ``app.hooks.on(event, handler)``.
+
+        Works for any event string — built-in or custom — and supports
+        both direct and decorator forms.
+        """
+        return self.hooks.on(event, handler)
 
     def register(self, collection: Collection, auth: list[str] | None = None) -> None:
         auth_rules = {}
@@ -44,10 +85,14 @@ class Cinder:
             if not has_created_by:
                 collection.fields.append(TextField("created_by"))
 
+        # Bind the collection to the app's shared registry so app-level
+        # handlers and collection-level handlers live in one place.
+        collection.bind_registry(self._registry, self._runner)
         self._collections[collection.name] = (collection, auth_rules)
 
     def use_auth(self, auth: Auth) -> None:
         self._auth = auth
+        auth.bind_registry(self._registry, self._runner)
 
     def _get_secret(self) -> str:
         if self._secret:
@@ -91,10 +136,14 @@ class Cinder:
 
             _init_done[0] = True
 
+        app_runner = self._runner
+
         @asynccontextmanager
         async def lifespan(app: Starlette):
             await _init()
+            await app_runner.fire("app:startup", None, CinderContext.system())
             yield
+            await app_runner.fire("app:shutdown", None, CinderContext.system())
             await db.disconnect()
             logger.info("Database disconnected")
 
@@ -127,6 +176,7 @@ class Cinder:
             starlette_app,
             db=db if auth else None,
             secret=secret if auth else None,
+            hook_runner=self._runner,
         )
 
         # Wrap *outside* the existing middleware stack so lazy init fires first.
