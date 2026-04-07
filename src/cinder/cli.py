@@ -7,13 +7,19 @@ from pathlib import Path
 
 import typer
 
-app = typer.Typer(name="cinder", help="Cinder — A lightweight backend framework for Python.")
+app = typer.Typer(
+    name="cinder", help="Cinder — A lightweight backend framework for Python."
+)
 
 
 @app.command()
 def serve(
-    app_path: str = typer.Argument(..., help="Path to the Python file containing the Cinder app"),
-    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload for development"),
+    app_path: str = typer.Argument(
+        ..., help="Path to the Python file containing the Cinder app"
+    ),
+    reload: bool = typer.Option(
+        False, "--reload", help="Enable auto-reload for development"
+    ),
     host: str = typer.Option("0.0.0.0", "--host", help="Host to bind to"),
     port: int = typer.Option(8000, "--port", help="Port to bind to"),
 ):
@@ -31,6 +37,7 @@ def serve(
     module = importlib.import_module(module_name)
 
     from cinder.app import Cinder
+
     cinder_app = None
     for attr_name in dir(module):
         attr = getattr(module, attr_name)
@@ -54,7 +61,7 @@ def init(
     project_path = Path(project_name)
     project_path.mkdir(parents=True, exist_ok=True)
 
-    main_content = '''from cinder import Cinder, Collection, TextField, IntField, Auth
+    main_content = """from cinder import Cinder, Collection, TextField, IntField, Auth
 
 app = Cinder(database="app.db")
 
@@ -71,7 +78,7 @@ app.use_auth(auth)
 
 if __name__ == "__main__":
     app.serve()
-'''
+"""
     (project_path / "main.py").write_text(main_content)
 
     env_content = "# CINDER_SECRET=your-secret-key-here\n"
@@ -89,7 +96,9 @@ if __name__ == "__main__":
 def promote(
     email: str = typer.Argument(..., help="Email of the user to promote"),
     role: str = typer.Option("admin", "--role", help="Role to assign"),
-    database: str = typer.Option("app.db", "--database", help="Path to the database file"),
+    database: str = typer.Option(
+        "app.db", "--database", help="Path to the database file"
+    ),
 ):
     """Promote a user to a new role."""
     from cinder.db.connection import Database
