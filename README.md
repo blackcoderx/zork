@@ -1973,7 +1973,6 @@ See [phases.md](phases.md) for the full roadmap of upcoming features:
 - **Phase 4** — File Storage (local + S3-compatible) ✅
 - **Phase 5** — Email & Notifications ✅
 - **Phase 6** — Realtime (WebSocket + SSE) ✅
-- **Phase 7** — AI Integration
 - **Phase 8** — Redis & Caching ✅
 
 ---
