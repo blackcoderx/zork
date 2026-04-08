@@ -82,17 +82,6 @@ def fake_redis_client():
 
 
 class TestRedisCacheBackend:
-    @pytest.fixture
-    def backend(self, fake_redis_client, monkeypatch):
-        b = RedisCacheBackend(prefix="test")
-
-        async def _fake_get_client():
-            return fake_redis_client
-
-        monkeypatch.setattr("cinder.cache.redis_client.get_client", _fake_get_client)
-        monkeypatch.setattr("cinder.cache.backends.RedisCacheBackend._redis", lambda self: _fake_get_client())
-        return b
-
     @pytest.fixture(autouse=True)
     def patch_redis(self, monkeypatch, fake_redis_client):
         """Patch _redis() on all RedisCacheBackend instances."""

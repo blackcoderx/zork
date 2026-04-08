@@ -49,6 +49,7 @@ def broker(fake_redis, monkeypatch):
     return b
 
 
+@pytest.mark.asyncio
 async def test_publish_subscribe_round_trip(broker, fake_redis):
     sub = await broker.subscribe(["posts"])
     envelope = {"event": "create", "collection": "posts", "record": {"id": 1}}
@@ -62,6 +63,7 @@ async def test_publish_subscribe_round_trip(broker, fake_redis):
     await broker.close()
 
 
+@pytest.mark.asyncio
 async def test_multiple_subscribers_all_receive(broker, fake_redis):
     sub1 = await broker.subscribe(["posts"])
     sub2 = await broker.subscribe(["posts"])
@@ -78,6 +80,7 @@ async def test_multiple_subscribers_all_receive(broker, fake_redis):
     await broker.close()
 
 
+@pytest.mark.asyncio
 async def test_filter_applied(broker, fake_redis):
     """Subscriber with a filter that rejects the envelope should not receive it."""
     def reject_all(envelope, user):
@@ -93,6 +96,7 @@ async def test_filter_applied(broker, fake_redis):
     await broker.close()
 
 
+@pytest.mark.asyncio
 async def test_unsubscribe_closes_queue(broker, fake_redis):
     sub = await broker.subscribe(["posts"])
     assert broker.subscription_count == 1
@@ -105,6 +109,7 @@ async def test_unsubscribe_closes_queue(broker, fake_redis):
     assert result is None
 
 
+@pytest.mark.asyncio
 async def test_close_cancels_all_tasks(broker, fake_redis):
     await broker.subscribe(["posts"])
     await broker.subscribe(["tags"])
@@ -114,6 +119,7 @@ async def test_close_cancels_all_tasks(broker, fake_redis):
     assert broker.subscription_count == 0
 
 
+@pytest.mark.asyncio
 async def test_wrong_channel_not_delivered(broker, fake_redis):
     sub = await broker.subscribe(["tags"])
     envelope = {"event": "create", "collection": "posts", "record": {"id": 5}}
@@ -124,6 +130,7 @@ async def test_wrong_channel_not_delivered(broker, fake_redis):
     await broker.close()
 
 
+@pytest.mark.asyncio
 async def test_subscription_count(broker, fake_redis):
     assert broker.subscription_count == 0
     sub = await broker.subscribe(["posts"])

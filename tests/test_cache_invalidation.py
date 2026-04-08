@@ -17,6 +17,7 @@ def setup():
     return registry, runner, backend
 
 
+@pytest.mark.asyncio
 async def test_after_create_invalidates_list(setup):
     registry, runner, backend = setup
 
@@ -33,6 +34,7 @@ async def test_after_create_invalidates_list(setup):
     assert await backend.smembers(_list_tag("posts")) == set()
 
 
+@pytest.mark.asyncio
 async def test_after_update_invalidates_list_and_get(setup):
     registry, runner, backend = setup
 
@@ -49,6 +51,7 @@ async def test_after_update_invalidates_list_and_get(setup):
     assert await backend.get(get_key) is None
 
 
+@pytest.mark.asyncio
 async def test_after_delete_invalidates_list_and_get(setup):
     registry, runner, backend = setup
 
@@ -65,6 +68,7 @@ async def test_after_delete_invalidates_list_and_get(setup):
     assert await backend.get(get_key) is None
 
 
+@pytest.mark.asyncio
 async def test_invalidation_does_not_affect_other_collections(setup):
     registry, runner, backend = setup
 
@@ -82,6 +86,7 @@ async def test_invalidation_does_not_affect_other_collections(setup):
     assert await backend.get(tags_key) == b"tags"  # untouched
 
 
+@pytest.mark.asyncio
 async def test_invalidation_backend_error_does_not_raise(setup, monkeypatch):
     registry, runner, backend = setup
 

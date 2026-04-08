@@ -287,29 +287,25 @@ async def test_cinder_on_shorthand():
 
 def test_app_error_hook_fires_on_unhandled_exception(tmp_path):
     from starlette.testclient import TestClient
-    from starlette.routing import Route
-    from starlette.responses import JSONResponse
+    from cinder.collections.schema import Collection, TextField
 
     app = Cinder(database=str(tmp_path / "err.db"))
     seen = []
     app.hooks.on("app:error", lambda exc, ctx: seen.append(type(exc).__name__))
 
-    built = app.build()
-    # Inject a failing route directly into the inner Starlette app.
-    inner = built._inner  # LazyInitMiddleware wraps the stack
-    # Walk down to the Starlette instance
-    cur = inner
-    while not hasattr(cur, "add_route"):
-        cur = getattr(cur, "app", None)
-        if cur is None:
-            break
-    if cur is not None:
-        async def boom(request):
-            raise RuntimeError("kaboom")
-        cur.add_route("/boom", boom, methods=["GET"])
+    # Use the public API: register a collection with a before_create hook
+    # that raises a bare RuntimeError.  This exercises the error middleware
+    # without touching any private attribute or middleware internals.
+    posts = Collection("posts", fields=[TextField("title")])
+    app.register(posts, auth=["read:public", "write:public"])
 
+    @posts.on("before_create")
+    async def boom(data, ctx):
+        raise RuntimeError("kaboom")
+
+    built = app.build()
     with TestClient(built, raise_server_exceptions=False) as client:
-        resp = client.get("/boom")
+        resp = client.post("/api/posts", json={"title": "x"})
         assert resp.status_code == 500
     assert seen == ["RuntimeError"]
 

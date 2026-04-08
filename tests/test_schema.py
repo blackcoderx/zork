@@ -30,6 +30,11 @@ class TestFieldTypes:
         f = FloatField("price", required=True)
         assert f.sqlite_type() == "REAL"
 
+    def test_float_field_constraints(self):
+        f = FloatField("rating", min_value=0.0, max_value=5.0)
+        assert f.min_value == 0.0
+        assert f.max_value == 5.0
+
     def test_bool_field(self):
         f = BoolField("active", default=True)
         assert f.sqlite_type() == "INTEGER"
@@ -149,3 +154,26 @@ class TestCollection:
             Model(qty=-1)
         with pytest.raises(ValidationError):
             Model(qty=101)
+
+    def test_build_pydantic_model_float_constraints(self):
+        from pydantic import ValidationError
+        c = Collection("reviews", fields=[
+            FloatField("rating", min_value=0.0, max_value=5.0),
+        ])
+        Model = c.build_pydantic_model()
+        instance = Model(rating=4.5)
+        assert instance.rating == 4.5
+        with pytest.raises(ValidationError):
+            Model(rating=-0.1)
+        with pytest.raises(ValidationError):
+            Model(rating=5.1)
+
+    def test_build_pydantic_model_required_float(self):
+        from pydantic import ValidationError
+        c = Collection("products", fields=[
+            FloatField("price", required=True),
+        ])
+        Model = c.build_pydantic_model()
+        assert Model(price=9.99).price == 9.99
+        with pytest.raises(ValidationError):
+            Model()  # price is required
