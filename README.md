@@ -16,6 +16,7 @@ Define your data schema in Python, and Cinder auto-generates a full CRUD API wit
 - [Relations & Expand](#relations--expand)
 - [Hooks & Lifecycle Events](#hooks--lifecycle-events)
 - [File Storage](#file-storage)
+- [Email](#email)
 - [Realtime](#realtime)
 - [Caching](#caching)
 - [Rate Limiting](#rate-limiting)
@@ -359,7 +360,22 @@ Response (`200`):
 { "message": "If the email exists, a reset link has been generated" }
 ```
 
-The reset token is currently logged to the console. Email delivery will be added in a future phase.
+When `app.email` is configured, a password-reset link is dispatched automatically. Without email configuration the reset token is logged to the console (development fallback).
+
+#### Verify Email — `GET /api/auth/verify-email?token=<token>`
+
+Verifies a user's email address using the token sent after registration.
+
+```bash
+curl http://localhost:8000/api/auth/verify-email?token=<verification-token>
+```
+
+Response (`200`):
+```json
+{ "message": "Email verified successfully" }
+```
+
+Returns `400` for an unknown, already-used, or expired token. Tokens expire after 24 hours. Sending a new verification email (future feature) automatically invalidates the previous token.
 
 #### Reset Password — `POST /api/auth/reset-password`
 
@@ -699,6 +715,7 @@ auth:before_register    auth:after_register
 auth:before_login       auth:after_login
 auth:before_logout      auth:after_logout
 auth:before_password_reset    auth:after_password_reset
+auth:after_verify_email
 ```
 
 App-level events:
@@ -1067,6 +1084,203 @@ Cinder enforces several protections on every file upload:
 - **Path traversal prevention** — storage keys are always `{collection}/{id}/{field}/{uuid}_{sanitized_name}`. The user-supplied filename is sanitized (alphanumeric, `-`, `_`, `.` only) and prefixed with a UUID. User input never controls the storage path directly.
 - **Auth gating** — upload and delete always require write permission. Download requires read permission unless `FileField(public=True)` is set explicitly.
 - **Signed URL expiry** — presigned download URLs expire after 15 minutes by default (configurable via `signed_url_expires`). The URL is generated fresh per request and never stored.
+
+---
+
+## Email
+
+Cinder has a built-in email delivery layer that powers password-reset links and email verification out of the box. It is completely **opt-in** — apps without email configuration continue to work exactly as before (reset tokens are logged to the console instead).
+
+Install the email extra to enable SMTP delivery:
+
+```bash
+pip install cinder[email]
+# or
+uv add cinder[email]
+```
+
+### Zero-Config (Console Fallback)
+
+No configuration is needed in development. Cinder falls back to `ConsoleEmailBackend` automatically when no backend is configured — all outbound emails are printed to the server log so you can inspect links and content.
+
+```python
+app = Cinder("app.db")
+app.use_auth(Auth())   # email verification + password-reset emails → console log
+```
+
+### Connecting an SMTP Provider
+
+Use `app.email.use(backend)` to plug in a real delivery backend, and `app.email.configure(...)` to set the sender address, app name, and base URL used in generated links.
+
+```python
+from cinder.email import SMTPBackend
+
+app.email.use(SMTPBackend.sendgrid(api_key=os.getenv("SENDGRID_API_KEY")))
+app.email.configure(
+    from_address="no-reply@myapp.com",
+    app_name="MyApp",
+    base_url="https://myapp.com",
+)
+```
+
+All emails are dispatched via `asyncio.create_task` — they never block the HTTP response. Failures are logged and swallowed so a broken SMTP connection never causes a `500` for the user.
+
+### Provider Presets
+
+| Preset | Host | Port | TLS Mode |
+|--------|------|------|----------|
+| `SMTPBackend.gmail(username, app_password)` | smtp.gmail.com | 587 | STARTTLS |
+| `SMTPBackend.sendgrid(api_key)` | smtp.sendgrid.net | 587 | STARTTLS |
+| `SMTPBackend.ses(region, key_id, secret)` | email-smtp.{region}.amazonaws.com | 587 | STARTTLS |
+| `SMTPBackend.mailgun(username, password, eu=False)` | smtp.mailgun.org | 587 | STARTTLS |
+| `SMTPBackend.mailtrap(api_token)` | live.smtp.mailtrap.io | 587 | STARTTLS |
+| `SMTPBackend.postmark(api_token)` | smtp.postmarkapp.com | 587 | STARTTLS |
+| `SMTPBackend.resend(api_key)` | smtp.resend.com | 465 | Implicit TLS |
+
+```python
+# Gmail (requires an App Password — not your account password)
+app.email.use(SMTPBackend.gmail(
+    username="me@gmail.com",
+    app_password="xxxx xxxx xxxx xxxx",
+))
+
+# Amazon SES (use SMTP-specific credentials, not IAM keys)
+app.email.use(SMTPBackend.ses(
+    region="us-east-1",
+    key_id=os.getenv("SES_SMTP_USER"),
+    secret=os.getenv("SES_SMTP_PASSWORD"),
+))
+
+# Mailgun
+app.email.use(SMTPBackend.mailgun(
+    username="postmaster@mg.myapp.com",
+    password=os.getenv("MAILGUN_SMTP_PASSWORD"),
+))
+
+# Resend (uses port 465 implicit TLS, not STARTTLS)
+app.email.use(SMTPBackend.resend(api_key=os.getenv("RESEND_API_KEY")))
+
+# Any custom SMTP server
+from cinder.email import SMTPBackend
+app.email.use(SMTPBackend(
+    hostname="smtp.myhost.com",
+    port=587,
+    username="user@myhost.com",
+    password="smtp-password",
+    start_tls=True,
+))
+```
+
+### Retry Behaviour
+
+`SMTPBackend` retries transient failures (server disconnects, connection errors, timeouts) with exponential back-off. Permanent failures (authentication errors, rejected recipients) raise immediately without retrying.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_retries` | `3` | Maximum send attempts |
+| `retry_base_delay` | `1.0` | Initial retry delay in seconds (doubles each attempt) |
+| `timeout` | `30` | Connection and command timeout in seconds |
+
+### Sending Custom Emails
+
+`app.email.send()` can be called from hooks or anywhere in your code to send any transactional email:
+
+```python
+from cinder.email import EmailMessage
+
+@app.on("orders:after_create")
+async def send_order_confirmation(order, ctx):
+    await app.email.send(EmailMessage(
+        to=order["customer_email"],
+        subject=f"Order #{order['id']} confirmed",
+        html_body=f"<p>Your order <b>#{order['id']}</b> is confirmed.</p>",
+        text_body=f"Your order #{order['id']} is confirmed.",
+    ))
+```
+
+The `from_address` is filled in automatically from `app.email.configure(from_address=...)` if not set on the message.
+
+### Customising Email Templates
+
+Cinder ships built-in inline-styled HTML templates for password-reset, email verification, and welcome emails. Override any of them with your own callable — use plain f-strings, Jinja2, Mako, or any other template engine:
+
+```python
+# Plain f-string override
+def my_reset_template(ctx):
+    url = ctx["reset_url"]
+    return (
+        "Reset your password",
+        f"<h1>Reset link</h1><a href='{url}'>Click here</a>",
+        f"Reset link: {url}",
+    )
+
+app.email.on_password_reset(my_reset_template)
+
+# Jinja2 override (install jinja2 separately)
+from jinja2 import Environment, FileSystemLoader
+
+jinja = Environment(loader=FileSystemLoader("templates/email"))
+
+def jinja_reset(ctx):
+    html = jinja.get_template("reset.html").render(**ctx)
+    text = jinja.get_template("reset.txt").render(**ctx)
+    return "Reset your password", html, text
+
+app.email.on_password_reset(jinja_reset)
+```
+
+| Override method | Context dict keys | Description |
+|-----------------|-------------------|-------------|
+| `app.email.on_password_reset(fn)` | `reset_url`, `app_name`, `expiry_minutes` | Password-reset email |
+| `app.email.on_verification(fn)` | `verify_url`, `app_name` | Email-verification email sent on registration |
+| `app.email.on_welcome(fn)` | `user_email`, `app_name` | Welcome email (opt-in, call from a hook) |
+
+Each callable receives the context dict and must return `(subject: str, html_body: str, text_body: str)`.
+
+### Custom Backend
+
+Subclass `EmailBackend` to integrate any delivery system — HTTP API, queue, SES SDK, etc.:
+
+```python
+from cinder.email import EmailBackend, EmailMessage
+import httpx
+
+class PostmarkHTTPBackend(EmailBackend):
+    def __init__(self, server_token: str):
+        self._token = server_token
+
+    async def send(self, message: EmailMessage) -> None:
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                "https://api.postmarkapp.com/email",
+                headers={"X-Postmark-Server-Token": self._token},
+                json={
+                    "From": message.from_address,
+                    "To": message.to,
+                    "Subject": message.subject,
+                    "HtmlBody": message.html_body,
+                    "TextBody": message.text_body,
+                },
+            )
+
+app.email.use(PostmarkHTTPBackend(server_token=os.getenv("POSTMARK_TOKEN")))
+```
+
+### Email Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CINDER_EMAIL_FROM` | `noreply@localhost` | Default sender address used in all outbound emails |
+| `CINDER_APP_NAME` | `Your App` | App name shown in email templates |
+| `CINDER_BASE_URL` | `http://localhost:8000` | Base URL prepended to verification and reset links |
+
+These can be set in your `.env` file instead of calling `app.email.configure(...)`:
+
+```env
+CINDER_EMAIL_FROM=no-reply@myapp.com
+CINDER_APP_NAME=MyApp
+CINDER_BASE_URL=https://myapp.com
+```
 
 ---
 
@@ -1720,6 +1934,9 @@ cinder promote user@example.com --role moderator --database myapp.db
 | `CINDER_RATE_LIMIT_USER` | Optional | Authenticated rate limit as `requests/window_seconds` (default: `1000/60`). |
 | `CINDER_REALTIME_BROKER` | Optional | `memory` (default) or `redis`. Set to `redis` to enable multi-process realtime fan-out. |
 | `CINDER_SSE_HEARTBEAT` | Optional | Seconds between SSE ping heartbeat comments (default: `15`). |
+| `CINDER_EMAIL_FROM` | Optional | Default sender address for all outbound emails (default: `noreply@localhost`). |
+| `CINDER_APP_NAME` | Optional | App name shown in built-in email templates (default: `Your App`). |
+| `CINDER_BASE_URL` | Optional | Base URL prepended to verification and password-reset links (default: `http://localhost:8000`). |
 
 ### `.env` File
 
@@ -1754,7 +1971,7 @@ See [phases.md](phases.md) for the full roadmap of upcoming features:
 
 - **Phase 3** — Hooks & Lifecycle Events ✅
 - **Phase 4** — File Storage (local + S3-compatible) ✅
-- **Phase 5** — Email & Notifications
+- **Phase 5** — Email & Notifications ✅
 - **Phase 6** — Realtime (WebSocket + SSE) ✅
 - **Phase 7** — AI Integration
 - **Phase 8** — Redis & Caching ✅
