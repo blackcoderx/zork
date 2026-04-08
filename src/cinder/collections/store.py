@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -87,10 +88,13 @@ class CollectionStore:
         placeholders = ", ".join("?" for _ in record)
         values = tuple(record.values())
 
-        await self.db.execute(
-            f"INSERT INTO {collection.name} ({columns}) VALUES ({placeholders})",
-            values,
-        )
+        try:
+            await self.db.execute(
+                f"INSERT INTO {collection.name} ({columns}) VALUES ({placeholders})",
+                values,
+            )
+        except sqlite3.IntegrityError as exc:
+            raise CinderError(400, str(exc)) from exc
 
         saved = self._deserialize(collection, record)
         await collection._runner.run(
@@ -222,10 +226,13 @@ class CollectionStore:
         set_clauses = ", ".join(f"{k} = ?" for k in update_values)
         params = list(update_values.values()) + [id]
 
-        await self.db.execute(
-            f"UPDATE {collection.name} SET {set_clauses} WHERE id = ?",
-            tuple(params),
-        )
+        try:
+            await self.db.execute(
+                f"UPDATE {collection.name} SET {set_clauses} WHERE id = ?",
+                tuple(params),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise CinderError(400, str(exc)) from exc
 
         updated = await self._raw_get(collection, id)
         await collection._runner.run(

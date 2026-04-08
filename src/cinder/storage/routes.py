@@ -4,13 +4,14 @@ Each public function is a *factory* that captures the collection, field, store,
 and backend in a closure and returns a Starlette-compatible async callable.
 The factory pattern keeps the signatures clean and avoids global state.
 """
+
 from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response, RedirectResponse
+from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from cinder.errors import CinderError
 from cinder.hooks.context import CinderContext
@@ -20,6 +21,7 @@ from .keys import generate_key
 if TYPE_CHECKING:
     from cinder.collections.schema import Collection, FileField
     from cinder.collections.store import CollectionStore
+
     from .backends import FileStorageBackend
 
 logger = logging.getLogger("cinder.storage")
@@ -46,8 +48,12 @@ _MAGIC: list[tuple[str, int, bytes]] = [
 ]
 
 _KNOWN_BINARY_PREFIXES = {
-    "image/", "video/", "audio/", "application/pdf",
-    "application/zip", "application/gzip",
+    "image/",
+    "video/",
+    "audio/",
+    "application/pdf",
+    "application/zip",
+    "application/gzip",
 }
 
 
@@ -119,7 +125,9 @@ def make_upload_handler(
             raise CinderError(400, "Missing 'file' field in multipart form")
 
         filename = getattr(upload, "filename", None) or "upload"
-        declared_content_type = getattr(upload, "content_type", None) or "application/octet-stream"
+        declared_content_type = (
+            getattr(upload, "content_type", None) or "application/octet-stream"
+        )
 
         # 4. Read with size guard — read in chunks, abort if max_size exceeded
         _CHUNK = 65536  # 64 KB
@@ -156,7 +164,9 @@ def make_upload_handler(
         effective_mime = sniffed or declared_content_type
 
         # 6. Fetch the existing record
-        ctx = CinderContext.from_request(request, collection=collection.name, operation="update")
+        ctx = CinderContext.from_request(
+            request, collection=collection.name, operation="update"
+        )
         record = await store.get(collection, record_id, ctx=ctx)
         if record is None:
             raise CinderError(404, "Record not found")
@@ -164,7 +174,9 @@ def make_upload_handler(
         # 7. If single-file mode, delete the old file from the backend first
         existing_meta = record.get(field_name)
         if not field.multiple and existing_meta:
-            old_key = existing_meta.get("key") if isinstance(existing_meta, dict) else None
+            old_key = (
+                existing_meta.get("key") if isinstance(existing_meta, dict) else None
+            )
             if old_key:
                 try:
                     await backend.delete(old_key)
@@ -219,7 +231,9 @@ def make_download_handler(
             _check_auth(request, effective_rule)
 
         record_id = request.path_params["id"]
-        ctx = CinderContext.from_request(request, collection=collection.name, operation="read")
+        ctx = CinderContext.from_request(
+            request, collection=collection.name, operation="read"
+        )
         record = await store.get(collection, record_id, ctx=ctx)
         if record is None:
             raise CinderError(404, "Record not found")
@@ -295,7 +309,9 @@ def make_delete_handler(
         _check_auth(request, write_rule)
 
         record_id = request.path_params["id"]
-        ctx = CinderContext.from_request(request, collection=collection.name, operation="update")
+        ctx = CinderContext.from_request(
+            request, collection=collection.name, operation="update"
+        )
         record = await store.get(collection, record_id, ctx=ctx)
         if record is None:
             raise CinderError(404, "Record not found")
@@ -333,7 +349,9 @@ def make_delete_handler(
                         pass
                 updated_meta = [m for i, m in enumerate(meta) if i != index]
             else:
-                raise CinderError(400, "Provide ?index=N or ?all=true for multi-file fields")
+                raise CinderError(
+                    400, "Provide ?index=N or ?all=true for multi-file fields"
+                )
         else:
             # Single file
             key = meta.get("key") if isinstance(meta, dict) else None

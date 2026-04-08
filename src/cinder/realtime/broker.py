@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Callable
-from typing import Protocol, runtime_checkable
+from typing import Callable, Protocol, runtime_checkable
 
 logger = logging.getLogger("cinder.realtime.broker")
 
@@ -84,8 +83,8 @@ class Subscription:
                 pass
             self.dropped += 1
             logger.warning(
-                "Subscription queue full — dropped oldest envelope "
-                "(total dropped: %d)", self.dropped
+                "Subscription queue full — dropped oldest envelope (total dropped: %d)",
+                self.dropped,
             )
         try:
             self._queue.put_nowait(envelope)
@@ -172,9 +171,7 @@ class RealtimeBroker:
     async def publish(self, channel: str, envelope: dict) -> None:
         """Fan out *envelope* to every subscriber listening on *channel*."""
         async with self._lock:
-            targets = [
-                s for s in self._subscriptions if channel in s.channels
-            ]
+            targets = [s for s in self._subscriptions if channel in s.channels]
         for sub in targets:
             sub._deliver(envelope)
 

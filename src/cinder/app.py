@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import secrets
@@ -13,7 +14,11 @@ from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from cinder.auth import Auth
-from cinder.auth.models import cleanup_expired_blocklist, create_auth_tables
+from cinder.auth.models import (
+    cleanup_expired_blocklist,
+    cleanup_expired_verifications,
+    create_auth_tables,
+)
 from cinder.auth.routes import build_auth_routes
 from cinder.cache.backends import CacheBackend, MemoryCacheBackend, RedisCacheBackend
 from cinder.cache.invalidation import install_invalidation
@@ -185,6 +190,181 @@ class _RateLimitConfig:
         return factory
 
 
+async def _safe_send(backend, message) -> None:
+    """Fire-and-forget email send. Swallows exceptions so background task
+    failures never crash the event loop or leak to the HTTP response."""
+    try:
+        await backend.send(message)
+    except Exception:
+        logger.exception("Background email send failed (to=%s)", message.to)
+
+
+class _EmailConfig:
+    """Fluent email configuration facade — accessible via ``app.email``.
+
+    Example::
+
+        from cinder.email import SMTPBackend
+
+        app.email.use(SMTPBackend.sendgrid(api_key=os.getenv("SENDGRID_API_KEY")))
+        app.email.configure(
+            from_address="no-reply@myapp.com",
+            app_name="MyApp",
+            base_url="https://myapp.com",
+        )
+    """
+
+    def __init__(self) -> None:
+        self._backend = None
+        self._from_address: str = os.getenv("CINDER_EMAIL_FROM", "noreply@localhost")
+        self._app_name: str = os.getenv("CINDER_APP_NAME", "Your App")
+        self._base_url: str = os.getenv("CINDER_BASE_URL", "http://localhost:8000")
+        # Template override callables — each receives a context dict and returns
+        # (subject, html_body, text_body). None = use built-in default.
+        self._template_password_reset = None
+        self._template_verification = None
+        self._template_welcome = None
+
+    def use(self, backend) -> "_EmailConfig":
+        """Plug in an :class:`~cinder.email.EmailBackend` implementation."""
+        self._backend = backend
+        return self
+
+    def configure(
+        self,
+        *,
+        from_address: str | None = None,
+        app_name: str | None = None,
+        base_url: str | None = None,
+    ) -> "_EmailConfig":
+        """Set sender address, app name, and base URL for generated links."""
+        if from_address is not None:
+            self._from_address = from_address
+        if app_name is not None:
+            self._app_name = app_name
+        if base_url is not None:
+            self._base_url = base_url
+        return self
+
+    def on_password_reset(self, fn) -> "_EmailConfig":
+        """Override the password-reset email template.
+
+        ``fn`` receives::
+
+            {
+                "reset_url":      str,
+                "app_name":       str,
+                "expiry_minutes": int,
+            }
+
+        ``fn`` must return ``(subject: str, html_body: str, text_body: str)``.
+
+        Example::
+
+            def my_reset(ctx):
+                url = ctx["reset_url"]
+                return (
+                    "Reset your password",
+                    f"<p><a href='{url}'>Click here</a> to reset.</p>",
+                    f"Reset link: {url}",
+                )
+
+            app.email.on_password_reset(my_reset)
+        """
+        self._template_password_reset = fn
+        return self
+
+    def on_verification(self, fn) -> "_EmailConfig":
+        """Override the email-verification template.
+
+        ``fn`` receives::
+
+            {
+                "verify_url": str,
+                "app_name":   str,
+            }
+
+        ``fn`` must return ``(subject: str, html_body: str, text_body: str)``.
+        """
+        self._template_verification = fn
+        return self
+
+    def on_welcome(self, fn) -> "_EmailConfig":
+        """Override the welcome email template.
+
+        ``fn`` receives::
+
+            {
+                "user_email": str,
+                "app_name":   str,
+            }
+
+        ``fn`` must return ``(subject: str, html_body: str, text_body: str)``.
+        """
+        self._template_welcome = fn
+        return self
+
+    # ------------------------------------------------------------------
+    # Internal render helpers — called by auth routes
+    # ------------------------------------------------------------------
+
+    def _render_password_reset(self, reset_url: str, expiry_minutes: int = 60):
+        ctx = {
+            "reset_url": reset_url,
+            "app_name": self._app_name,
+            "expiry_minutes": expiry_minutes,
+        }
+        if self._template_password_reset:
+            return self._template_password_reset(ctx)
+        from cinder.email.templates import password_reset_email
+        return password_reset_email(reset_url, self._app_name, expiry_minutes)
+
+    def _render_verification(self, verify_url: str):
+        ctx = {"verify_url": verify_url, "app_name": self._app_name}
+        if self._template_verification:
+            return self._template_verification(ctx)
+        from cinder.email.templates import email_verification_email
+        return email_verification_email(verify_url, self._app_name)
+
+    def _render_welcome(self, user_email: str):
+        ctx = {"user_email": user_email, "app_name": self._app_name}
+        if self._template_welcome:
+            return self._template_welcome(ctx)
+        from cinder.email.templates import welcome_email
+        return welcome_email(user_email, self._app_name)
+
+    def _resolve_backend(self):
+        if self._backend:
+            return self._backend
+        from cinder.email.backends import ConsoleEmailBackend
+        return ConsoleEmailBackend()
+
+    async def send(self, message) -> None:
+        """Dispatch ``message`` in the background (non-blocking).
+
+        The sender address is filled in from ``configure(from_address=...)``
+        if the message doesn't have one set. Failures are logged and swallowed
+        so email errors never break the HTTP response.
+
+        Can also be called directly from hooks for custom transactional emails::
+
+            from cinder.email import EmailMessage
+
+            @app.on("orders:after_create")
+            async def send_confirmation(order, ctx):
+                await app.email.send(EmailMessage(
+                    to=order["email"],
+                    subject="Order confirmed",
+                    html_body="<p>Your order is confirmed.</p>",
+                    text_body="Your order is confirmed.",
+                ))
+        """
+        if not message.from_address:
+            message.from_address = self._from_address
+        backend = self._resolve_backend()
+        asyncio.create_task(_safe_send(backend, message))
+
+
 class _AppHooks:
     """Public facade for app-level hooks — ``app.hooks.on(...)`` / ``app.hooks.fire(...)``.
 
@@ -228,6 +408,8 @@ class Cinder:
         # Phase 8 subsystems
         self.cache: _CacheConfig = _CacheConfig()
         self.rate_limit: _RateLimitConfig = _RateLimitConfig()
+        # Phase 5: email
+        self.email: _EmailConfig = _EmailConfig()
         # Phase 4: file storage
         self._storage_backend = None
 
@@ -361,6 +543,7 @@ class Cinder:
                 extend_cols = auth.get_extend_columns_sql()
                 await create_auth_tables(db, extend_cols if extend_cols else None)
                 await cleanup_expired_blocklist(db)
+                await cleanup_expired_verifications(db)
                 logger.info("Auth tables ready")
 
             _init_done[0] = True
@@ -408,7 +591,7 @@ class Cinder:
         routes.extend(build_collection_routes(collections, store, storage_backend=self._storage_backend))
 
         if auth:
-            routes.extend(build_auth_routes(auth, db, secret))
+            routes.extend(build_auth_routes(auth, db, secret, email_config=self.email))
 
         # Install the auto-emit bridge and add realtime routes
         self.realtime._install_bridge(self._registry, collections)
