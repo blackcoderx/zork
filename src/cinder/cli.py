@@ -89,7 +89,7 @@ if __name__ == "__main__":
 
     typer.echo(f"Project created at {project_path.resolve()}")
     typer.echo(f"  cd {project_name}")
-    typer.echo(f"  cinder serve main.py")
+    typer.echo("cinder serve main.py")
 
 
 @app.command()

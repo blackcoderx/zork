@@ -11,6 +11,7 @@ from starlette.routing import Route
 from cinder.auth import Auth
 from cinder.auth.models import (
     USERS_TABLE, block_token, is_blocked, PASSWORD_RESETS_TABLE,
+    EMAIL_VERIFICATIONS_TABLE, create_verification_token,
 )
 from cinder.auth.passwords import hash_password, verify_password
 from cinder.auth.tokens import create_token, decode_token
@@ -43,7 +44,7 @@ async def _get_current_user(request: Request, db: Database, secret: str):
     return dict(user), payload
 
 
-def build_auth_routes(auth: Auth, db: Database, secret: str) -> list[Route]:
+def build_auth_routes(auth: Auth, db: Database, secret: str, email_config=None) -> list[Route]:  # noqa: ANN001
     runner = auth._runner
 
     async def register(request: Request) -> JSONResponse:
@@ -102,6 +103,19 @@ def build_auth_routes(auth: Auth, db: Database, secret: str) -> list[Route]:
         )
         user_dict = _user_response(dict(user))
         await runner.run("auth:after_register", user_dict, ctx)
+
+        # Send email verification link (non-blocking; silent if no backend configured)
+        if email_config is not None:
+            from cinder.email.backends import EmailMessage
+            from cinder.email.templates import email_verification_email
+            ver_token = await create_verification_token(db, user_id, email)
+            verify_url = (
+                f"{email_config._base_url}/api/auth/verify-email?token={ver_token}"
+            )
+            subject, html, text = email_config._render_verification(verify_url)
+            await email_config.send(
+                EmailMessage(to=email, subject=subject, html_body=html, text_body=text)
+            )
 
         return JSONResponse(
             {"token": token, "user": user_dict},
@@ -186,9 +200,19 @@ def build_auth_routes(auth: Auth, db: Database, secret: str) -> list[Route]:
                 f"INSERT INTO {PASSWORD_RESETS_TABLE} (token, user_id, expires_at) VALUES (?, ?, ?)",
                 (reset_token, user["id"], expires_at),
             )
-            logging.getLogger("cinder.auth").info(
-                f"Password reset token for {email}: {reset_token}"
-            )
+            if email_config is not None:
+                from cinder.email.backends import EmailMessage
+                reset_url = (
+                    f"{email_config._base_url}/reset-password?token={reset_token}"
+                )
+                subject, html, text = email_config._render_password_reset(reset_url)
+                await email_config.send(
+                    EmailMessage(to=email, subject=subject, html_body=html, text_body=text)
+                )
+            else:
+                logging.getLogger("cinder.auth").info(
+                    "Password reset token for %s: %s", email, reset_token
+                )
             await runner.run("auth:after_password_reset", {"email": email, "user_id": user["id"]}, ctx)
 
         return JSONResponse({
@@ -228,6 +252,41 @@ def build_auth_routes(auth: Auth, db: Database, secret: str) -> list[Route]:
 
         return JSONResponse({"message": "Password updated"})
 
+    async def verify_email(request: Request) -> JSONResponse:
+        token = request.query_params.get("token")
+        if not token:
+            raise CinderError(400, "Verification token is required")
+
+        row = await db.fetch_one(
+            f"SELECT * FROM {EMAIL_VERIFICATIONS_TABLE} WHERE token = ?", (token,)
+        )
+        if row is None:
+            raise CinderError(400, "Invalid or expired verification token")
+
+        row = dict(row)
+        now = datetime.now(timezone.utc).isoformat()
+        if row["expires_at"] < now:
+            await db.execute(
+                f"DELETE FROM {EMAIL_VERIFICATIONS_TABLE} WHERE token = ?", (token,)
+            )
+            raise CinderError(400, "Invalid or expired verification token")
+
+        await db.execute(
+            f"UPDATE {USERS_TABLE} SET is_verified = 1, updated_at = ? WHERE id = ?",
+            (now, row["user_id"]),
+        )
+        await db.execute(
+            f"DELETE FROM {EMAIL_VERIFICATIONS_TABLE} WHERE token = ?", (token,)
+        )
+
+        ctx = CinderContext.from_request(request, operation="verify_email")
+        await runner.run(
+            "auth:after_verify_email",
+            {"user_id": row["user_id"], "email": row["email"]},
+            ctx,
+        )
+        return JSONResponse({"message": "Email verified successfully"})
+
     return [
         Route("/api/auth/register", register, methods=["POST"]),
         Route("/api/auth/login", login, methods=["POST"]),
@@ -236,4 +295,5 @@ def build_auth_routes(auth: Auth, db: Database, secret: str) -> list[Route]:
         Route("/api/auth/refresh", refresh, methods=["POST"]),
         Route("/api/auth/forgot-password", forgot_password, methods=["POST"]),
         Route("/api/auth/reset-password", reset_password, methods=["POST"]),
+        Route("/api/auth/verify-email", verify_email, methods=["GET"]),
     ]
