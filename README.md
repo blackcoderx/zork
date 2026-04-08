@@ -16,6 +16,9 @@ Define your data schema in Python, and Cinder auto-generates a full CRUD API wit
 - [Relations & Expand](#relations--expand)
 - [Hooks & Lifecycle Events](#hooks--lifecycle-events)
 - [Realtime](#realtime)
+- [Caching](#caching)
+- [Rate Limiting](#rate-limiting)
+- [Redis](#redis)
 - [Middleware](#middleware)
 - [CLI](#cli)
 - [Configuration](#configuration)
@@ -1130,9 +1133,246 @@ CINDER_SSE_HEARTBEAT=30
 
 ---
 
+## Caching
+
+Cinder ships with a **cache-aside** response cache for collection GET endpoints. It works out of the box with an in-memory backend (great for development) and scales to Redis for production multi-process deployments.
+
+Install the Redis extra to use the Redis backend:
+
+```bash
+pip install cinder[redis]
+```
+
+### Zero-Config (In-Memory)
+
+The in-memory backend requires no configuration and is enabled automatically when `CINDER_REDIS_URL` is set or you call `app.cache.enable()`.
+
+```python
+app = Cinder("app.db")
+app.cache.enable()            # use in-memory backend (dev/test)
+app.cache.configure(default_ttl=60)
+```
+
+### Redis Backend
+
+```python
+app = Cinder("app.db")
+app.configure_redis(url="redis://localhost:6379/0")
+# Cache, rate-limit, and realtime broker all use Redis automatically
+```
+
+Or set via environment variable:
+
+```env
+CINDER_REDIS_URL=redis://localhost:6379/0
+```
+
+### How It Works
+
+- **Cache-aside**: GET requests to `/api/{collection}` and `/api/{collection}/{id}` are cached automatically on first hit.
+- **X-Cache header**: Responses include `X-Cache: HIT` or `X-Cache: MISS`.
+- **Per-user segmentation**: Cache keys include the user ID by default, so RBAC-filtered results never leak between users. Opt out per-collection with `per_user=False`.
+- **Automatic invalidation**: Any `POST`, `PATCH`, or `DELETE` that triggers an `after_create/update/delete` hook automatically busts the relevant cache keys — no manual work needed.
+- **Fail-open**: If the cache backend is down, requests pass through to the database without error.
+- **Never cached**: 4xx/5xx responses, `Set-Cookie` responses, and `Cache-Control: no-store` responses.
+
+### Programmatic Configuration
+
+```python
+from cinder import Cinder, RedisCacheBackend
+
+app = Cinder("app.db")
+
+# Use a custom backend
+app.cache.use(RedisCacheBackend())
+
+# Configure TTL and per-user segmentation
+app.cache.configure(default_ttl=600, per_user=True)
+
+# Opt specific paths out of caching
+app.cache.exclude("/api/feed", "/api/search")
+
+# Full example
+app.cache \
+    .use(RedisCacheBackend()) \
+    .configure(default_ttl=300) \
+    .exclude("/api/activity")
+```
+
+### Custom Backend
+
+Subclass `CacheBackend` to use any storage system (Memcached, DynamoDB, etc.):
+
+```python
+from cinder import CacheBackend
+
+class MyCacheBackend(CacheBackend):
+    async def get(self, key: str) -> bytes | None: ...
+    async def set(self, key: str, value: bytes, ttl: int | None = None) -> None: ...
+    async def delete(self, *keys: str) -> None: ...
+    async def delete_pattern(self, pattern: str) -> None: ...
+    async def sadd(self, set_key: str, *members: str) -> None: ...
+    async def smembers(self, set_key: str) -> set[str]: ...
+    async def sdelete(self, set_key: str) -> None: ...
+    async def clear(self) -> None: ...
+    async def close(self) -> None: ...
+
+app.cache.use(MyCacheBackend())
+```
+
+### Cache Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CINDER_CACHE_ENABLED` | auto | `true`/`false`. Auto-enables when `CINDER_REDIS_URL` is set. |
+| `CINDER_CACHE_TTL` | `300` | Default TTL in seconds |
+| `CINDER_CACHE_PREFIX` | `cinder` | Redis key namespace prefix |
+
+---
+
+## Rate Limiting
+
+Cinder includes a configurable rate limiter that protects every endpoint from abuse. It applies **before** the cache, so rejected requests never incur a cache lookup.
+
+```python
+app = Cinder("app.db")
+app.configure_redis(url="redis://localhost:6379/0")
+# Rate limiting is enabled automatically
+```
+
+On limit exceeded, Cinder returns:
+
+```http
+HTTP/1.1 429 Too Many Requests
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1744147200
+Retry-After: 42
+
+{"status": 429, "error": "Rate limit exceeded"}
+```
+
+Every allowed response also carries the rate-limit headers so clients can track their budget.
+
+### Default Limits
+
+| Client type | Default limit |
+|-------------|--------------|
+| Anonymous (no token) | 100 requests / 60 seconds per IP |
+| Authenticated | 1000 requests / 60 seconds per user |
+
+Override via environment variables:
+
+```env
+CINDER_RATE_LIMIT_ANON=200/60
+CINDER_RATE_LIMIT_USER=5000/60
+```
+
+### Per-Route Rules
+
+Add tighter or looser limits for specific paths:
+
+```python
+from cinder import RateLimitRule
+
+app.rate_limit.rule("/api/auth/login", limit=10, window=60, scope="ip")
+app.rate_limit.rule("/api/posts", limit=50, window=60, scope="user")
+```
+
+| `scope` | Key used |
+|---------|---------|
+| `"ip"` | client IP address (default for anonymous) |
+| `"user"` | authenticated user ID (default for authenticated) |
+| `"both"` | user ID if authenticated, otherwise IP |
+
+### Custom Backend
+
+```python
+from cinder import RateLimitBackend, RateLimitResult
+
+class MyRateLimitBackend(RateLimitBackend):
+    async def check(self, key: str, limit: int, window_seconds: int) -> RateLimitResult:
+        # Return RateLimitResult(allowed, remaining, reset_at)
+        ...
+    async def close(self) -> None: ...
+
+app.rate_limit.use(MyRateLimitBackend())
+```
+
+### Rate-Limit Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CINDER_RATE_LIMIT_ENABLED` | `true` | Set to `false` to disable globally |
+| `CINDER_RATE_LIMIT_ANON` | `100/60` | Anonymous limit in `requests/window_seconds` |
+| `CINDER_RATE_LIMIT_USER` | `1000/60` | Authenticated limit in `requests/window_seconds` |
+
+---
+
+## Redis
+
+`app.configure_redis(url=...)` is the single call that wires Redis into all three subsystems at once:
+
+```python
+app = Cinder("app.db")
+app.configure_redis(url="redis://localhost:6379/0")
+```
+
+This is equivalent to setting `CINDER_REDIS_URL` in your `.env`.
+
+| Subsystem | In-memory default | Redis (with `CINDER_REDIS_URL`) |
+|-----------|------------------|---------------------------------|
+| Cache | `MemoryCacheBackend` | `RedisCacheBackend` |
+| Rate limiting | `MemoryRateLimitBackend` | `RedisRateLimitBackend` (atomic Lua token bucket) |
+| Realtime broker | `RealtimeBroker` (in-process) | `RedisBroker` (pub/sub fan-out) |
+
+### Multi-Process / Multi-Node Realtime
+
+With the in-process broker, events only reach WebSocket/SSE clients connected to the **same process**. In production with multiple workers, enable the Redis broker:
+
+```env
+CINDER_REDIS_URL=redis://localhost:6379/0
+CINDER_REALTIME_BROKER=redis
+```
+
+Or programmatically:
+
+```python
+app.configure_redis(url="redis://localhost:6379/0")
+# CINDER_REALTIME_BROKER=redis activates RedisBroker automatically
+# when CINDER_REDIS_URL is set
+```
+
+The `RedisBroker` satisfies the same `BrokerProtocol` as the in-process broker — no changes needed anywhere else in your code.
+
+### Custom Broker
+
+Implement `BrokerProtocol` to use any message bus (RabbitMQ, NATS, etc.):
+
+```python
+from cinder.realtime.broker import BrokerProtocol, Subscription
+
+class MyBroker:
+    async def subscribe(self, channels, *, user=None, filter=None) -> Subscription: ...
+    async def unsubscribe(self, subscription: Subscription) -> None: ...
+    async def publish(self, channel: str, envelope: dict) -> None: ...
+    async def close(self) -> None: ...
+
+    @property
+    def subscription_count(self) -> int: ...
+```
+
+Pass it directly:
+
+```python
+app.realtime.use_broker(MyBroker())
+```
+
+---
+
 ## Middleware
 
-Cinder includes three built-in middleware layers applied to every request:
+Cinder includes built-in middleware layers applied to every request:
 
 ### Error Handling
 
@@ -1225,6 +1465,15 @@ cinder promote user@example.com --role moderator --database myapp.db
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `CINDER_SECRET` | Recommended | JWT signing secret. If not set, a random secret is generated on each startup (tokens won't survive restarts). |
+| `CINDER_REDIS_URL` | Optional | Redis connection string (e.g. `redis://localhost:6379/0`). Enables Redis-backed cache, rate-limit, and realtime broker. |
+| `CINDER_CACHE_ENABLED` | Optional | `true`/`false`. Auto-enabled when `CINDER_REDIS_URL` is set. |
+| `CINDER_CACHE_TTL` | Optional | Default cache TTL in seconds (default: `300`). |
+| `CINDER_CACHE_PREFIX` | Optional | Redis key namespace prefix (default: `cinder`). |
+| `CINDER_RATE_LIMIT_ENABLED` | Optional | `true`/`false` (default: `true`). |
+| `CINDER_RATE_LIMIT_ANON` | Optional | Anonymous rate limit as `requests/window_seconds` (default: `100/60`). |
+| `CINDER_RATE_LIMIT_USER` | Optional | Authenticated rate limit as `requests/window_seconds` (default: `1000/60`). |
+| `CINDER_REALTIME_BROKER` | Optional | `memory` (default) or `redis`. Set to `redis` to enable multi-process realtime fan-out. |
+| `CINDER_SSE_HEARTBEAT` | Optional | Seconds between SSE ping heartbeat comments (default: `15`). |
 
 ### `.env` File
 
@@ -1262,7 +1511,7 @@ See [phases.md](phases.md) for the full roadmap of upcoming features:
 - **Phase 5** — Email & Notifications
 - **Phase 6** — Realtime (WebSocket + SSE) ✅
 - **Phase 7** — AI Integration
-- **Phase 8** — Redis & Caching
+- **Phase 8** — Redis & Caching ✅
 
 ---
 
