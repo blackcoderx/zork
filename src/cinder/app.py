@@ -13,7 +13,7 @@ from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from cinder.auth import Auth
-from cinder.auth.models import create_auth_tables, cleanup_expired_blocklist
+from cinder.auth.models import cleanup_expired_blocklist, create_auth_tables
 from cinder.auth.routes import build_auth_routes
 from cinder.cache.backends import CacheBackend, MemoryCacheBackend, RedisCacheBackend
 from cinder.cache.invalidation import install_invalidation
@@ -26,7 +26,11 @@ from cinder.hooks.context import CinderContext
 from cinder.hooks.registry import HookRegistry
 from cinder.hooks.runner import HookRunner
 from cinder.pipeline import build_middleware_stack
-from cinder.ratelimit.backends import MemoryRateLimitBackend, RateLimitBackend, RedisRateLimitBackend
+from cinder.ratelimit.backends import (
+    MemoryRateLimitBackend,
+    RateLimitBackend,
+    RedisRateLimitBackend,
+)
 from cinder.ratelimit.middleware import RateLimitMiddleware, RateLimitRule
 from cinder.realtime import RealtimeFacade
 from cinder.realtime.broker import RealtimeBroker
@@ -49,7 +53,9 @@ class _CacheConfig:
         self._backend = backend
         return self
 
-    def configure(self, *, default_ttl: int | None = None, per_user: bool | None = None) -> "_CacheConfig":
+    def configure(
+        self, *, default_ttl: int | None = None, per_user: bool | None = None
+    ) -> "_CacheConfig":
         if default_ttl is not None:
             self._default_ttl = default_ttl
         if per_user is not None:
@@ -130,8 +136,12 @@ class _RateLimitConfig:
         self._backend = backend
         return self
 
-    def rule(self, path_prefix: str, *, limit: int, window: int = 60, scope: str = "ip") -> "_RateLimitConfig":
-        self._rules.append(RateLimitRule(path_prefix, limit=limit, window=window, scope=scope))
+    def rule(
+        self, path_prefix: str, *, limit: int, window: int = 60, scope: str = "ip"
+    ) -> "_RateLimitConfig":
+        self._rules.append(
+            RateLimitRule(path_prefix, limit=limit, window=window, scope=scope)
+        )
         return self
 
     def enable(self, value: bool = True) -> "_RateLimitConfig":
@@ -191,9 +201,11 @@ class _AppHooks:
 
     def on(self, event: str, handler=None):
         if handler is None:
+
             def decorator(fn):
                 self._registry.on(event, fn)
                 return fn
+
             return decorator
         self._registry.on(event, handler)
         return handler
@@ -216,6 +228,31 @@ class Cinder:
         # Phase 8 subsystems
         self.cache: _CacheConfig = _CacheConfig()
         self.rate_limit: _RateLimitConfig = _RateLimitConfig()
+        # Phase 4: file storage
+        self._storage_backend = None
+
+    def configure_storage(self, backend) -> "Cinder":
+        """Set the file storage backend used by all ``FileField`` columns.
+
+        Must be called before ``build()`` if any registered collection has a
+        ``FileField``. Raises ``CinderError`` at build time (not request time)
+        if a ``FileField`` collection is registered without a storage backend.
+
+        Example::
+
+            from cinder.storage import LocalFileBackend, S3CompatibleBackend
+
+            # Local disk (zero config, dev-friendly)
+            app.configure_storage(LocalFileBackend("./uploads"))
+
+            # Cloudflare R2
+            app.configure_storage(S3CompatibleBackend.r2(
+                account_id="xxx", bucket="my-bucket",
+                access_key="xxx", secret_key="xxx",
+            ))
+        """
+        self._storage_backend = backend
+        return self
 
     def configure_redis(self, *, url: str) -> "Cinder":
         """Configure Redis for all subsystems in one call.
@@ -228,6 +265,7 @@ class Cinder:
         module import time.
         """
         from cinder.cache import redis_client as _rc
+
         _rc.configure(url=url)
         os.environ["CINDER_REDIS_URL"] = url
         return self
@@ -283,10 +321,13 @@ class Cinder:
         if broker_type == "redis" or (broker_type == "" and redis_url):
             try:
                 from cinder.realtime.redis_broker import RedisBroker
+
                 logger.info("Using Redis realtime broker")
                 return RedisBroker()
             except ImportError:
-                logger.warning("RedisBroker requested but redis not installed — falling back to in-process broker")
+                logger.warning(
+                    "RedisBroker requested but redis not installed — falling back to in-process broker"
+                )
         return self._broker
 
     def build(self) -> Starlette:
@@ -337,7 +378,26 @@ class Cinder:
             logger.info("Database disconnected")
             # Close shared Redis client if one was created
             from cinder.cache import redis_client as _rc
+
             await _rc.close()
+
+        # Validate: if any collection has a FileField, a storage backend must be set
+        from cinder.collections.schema import FileField as _FileField
+        from cinder.errors import CinderError as _CinderError
+
+        for name, (col, _) in collections.items():
+            if any(isinstance(f, _FileField) for f in col.fields):
+                if self._storage_backend is None:
+                    raise _CinderError(
+                        500,
+                        f"Collection '{name}' has a FileField but no storage backend is configured. "
+                        "Call app.configure_storage(...) before app.build().",
+                    )
+
+        # Install orphan file cleanup hooks
+        if self._storage_backend is not None:
+            from cinder.storage.cleanup import install_file_cleanup
+            install_file_cleanup(self._registry, self._storage_backend, collections)
 
         routes: list[Route] = []
 
@@ -345,7 +405,7 @@ class Cinder:
             return JSONResponse({"status": "ok"})
 
         routes.append(Route("/api/health", health, methods=["GET"]))
-        routes.extend(build_collection_routes(collections, store))
+        routes.extend(build_collection_routes(collections, store, storage_backend=self._storage_backend))
 
         if auth:
             routes.extend(build_auth_routes(auth, db, secret))
@@ -376,7 +436,9 @@ class Cinder:
             def __init__(self, inner: ASGIApp) -> None:
                 self._inner = inner
 
-            async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+            async def __call__(
+                self, scope: Scope, receive: Receive, send: Send
+            ) -> None:
                 if scope["type"] in ("http", "websocket") and not _init_done[0]:
                     await _init()
                 await self._inner(scope, receive, send)
@@ -393,7 +455,10 @@ class Cinder:
         # Wrap *outside* the existing middleware stack so lazy init fires first.
         return LazyInitMiddleware(wrapped)  # type: ignore[return-value]
 
-    def serve(self, host: str = "0.0.0.0", port: int = 8000, reload: bool = False) -> None:
+    def serve(
+        self, host: str = "0.0.0.0", port: int = 8000, reload: bool = False
+    ) -> None:
         import uvicorn
+
         app = self.build()
         uvicorn.run(app, host=host, port=port)

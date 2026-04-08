@@ -5,7 +5,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from pydantic import ValidationError
 
-from cinder.collections.schema import Collection, RelationField
+from cinder.collections.schema import Collection, FileField, RelationField
 from cinder.collections.store import CollectionStore
 from cinder.errors import CinderError
 from cinder.hooks.context import CinderContext
@@ -14,10 +14,11 @@ from cinder.hooks.context import CinderContext
 def build_collection_routes(
     collections: dict[str, tuple[Collection, dict[str, str]]],
     store: CollectionStore,
+    storage_backend=None,
 ) -> list[Route]:
     routes: list[Route] = []
     for name, (collection, auth_rules) in collections.items():
-        routes.extend(_routes_for_collection(collection, auth_rules, store, collections))
+        routes.extend(_routes_for_collection(collection, auth_rules, store, collections, storage_backend))
     return routes
 
 
@@ -50,6 +51,7 @@ def _routes_for_collection(
     auth_rules: dict[str, str],
     store: CollectionStore,
     all_collections: dict[str, tuple[Collection, dict[str, str]]],
+    storage_backend=None,
 ) -> list[Route]:
     read_rule = auth_rules.get("read", "public")
     write_rule = auth_rules.get("write", "public")
@@ -143,13 +145,38 @@ def _routes_for_collection(
             raise CinderError(404, "Record not found")
         return JSONResponse({"message": "Record deleted"})
 
-    return [
+    routes = [
         Route(f"/api/{collection.name}", list_records, methods=["GET"]),
         Route(f"/api/{collection.name}/{{id}}", get_record, methods=["GET"]),
         Route(f"/api/{collection.name}", create_record, methods=["POST"]),
         Route(f"/api/{collection.name}/{{id}}", update_record, methods=["PATCH"]),
         Route(f"/api/{collection.name}/{{id}}", delete_record, methods=["DELETE"]),
     ]
+
+    # Auto-generate file routes for every FileField on this collection
+    if storage_backend is not None:
+        from cinder.storage.routes import (
+            make_download_handler,
+            make_upload_handler,
+            make_delete_handler,
+        )
+        for field in collection.fields:
+            if isinstance(field, FileField):
+                field_name = field.name
+                path = f"/api/{collection.name}/{{id}}/files/{field_name}"
+                routes.extend([
+                    Route(path, make_upload_handler(
+                        collection, field_name, field, store, storage_backend, write_rule,
+                    ), methods=["POST"]),
+                    Route(path, make_download_handler(
+                        collection, field_name, field, store, storage_backend, read_rule,
+                    ), methods=["GET"]),
+                    Route(path, make_delete_handler(
+                        collection, field_name, field, store, storage_backend, write_rule,
+                    ), methods=["DELETE"]),
+                ])
+
+    return routes
 
 
 async def _expand_field(

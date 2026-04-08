@@ -165,6 +165,89 @@ class JSONField(Field):
         return (Any, PydanticField(default=self.default))
 
 
+class FileField(Field):
+    """A field that stores uploaded file metadata as JSON in SQLite.
+
+    The actual file bytes are stored in a ``FileStorageBackend`` (local disk,
+    S3, R2, MinIO, etc.). This field holds only the metadata dict (or list of
+    dicts for ``multiple=True``).
+
+    Cinder automatically generates ``POST``, ``GET``, and ``DELETE`` routes at
+    ``/api/{collection}/{id}/files/{field_name}`` for every ``FileField``.
+
+    Args:
+        name: Field name (column name in SQLite).
+        max_size: Maximum file size in bytes. Default 10 MB.
+        allowed_types: List of MIME type patterns to accept, e.g.
+            ``["image/*", "application/pdf"]``. Default ``["*/*"]`` (any).
+        multiple: If ``True``, stores a list of files instead of one.
+        public: If ``True``, the download route skips authentication.
+            Use for publicly accessible files (avatars, cover images, etc.).
+        required: If ``True``, the field cannot be ``null`` in JSON responses.
+            Because files are uploaded via a separate route, this is rarely
+            useful and defaults to ``False``.
+
+    Example::
+
+        class Posts(Collection):
+            title = TextField(required=True)
+            cover = FileField(max_size=5_000_000, allowed_types=["image/*"], public=True)
+            attachments = FileField(multiple=True, allowed_types=["application/pdf"])
+    """
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        max_size: int = 10_000_000,
+        allowed_types: list[str] | None = None,
+        multiple: bool = False,
+        public: bool = False,
+        required: bool = False,
+    ) -> None:
+        super().__init__(name, required=required, default=None, unique=False)
+        self.max_size = max_size
+        self.allowed_types: list[str] = allowed_types or ["*/*"]
+        self.multiple = multiple
+        self.public = public
+
+    def sqlite_type(self) -> str:
+        return "TEXT"
+
+    def pydantic_field_info(self) -> tuple[type, Any]:
+        # FileFields are read-only from the standard JSON body perspective.
+        # Uploads happen via dedicated file routes, not the collection POST/PATCH.
+        # We accept Any so existing metadata dicts pass through without rejection.
+        return (Any, PydanticField(default=None))
+
+    def serialize(self, value: Any) -> str | None:
+        """Serialize metadata dict/list to a JSON string for SQLite storage."""
+        if value is None:
+            return None
+        return json.dumps(value)
+
+    def deserialize(self, value: str | None) -> Any:
+        """Deserialize a JSON string from SQLite back to dict/list."""
+        if value is None:
+            return None
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+    def matches_mime(self, mime: str) -> bool:
+        """Return True if ``mime`` matches any pattern in ``allowed_types``."""
+        for pattern in self.allowed_types:
+            if pattern == "*/*":
+                return True
+            if pattern.endswith("/*"):
+                if mime.startswith(pattern[:-2]):
+                    return True
+            elif pattern == mime:
+                return True
+        return False
+
+
 class RelationField(Field):
     def __init__(self, name: str, *, collection: str, required: bool = False,
                  unique: bool = False):

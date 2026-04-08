@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from cinder.collections.schema import Collection, BoolField, DateTimeField, JSONField
+from cinder.collections.schema import Collection, BoolField, DateTimeField, FileField, JSONField
 from cinder.db.connection import Database
 from cinder.errors import CANCEL_DELETE_MESSAGE, CinderError
 from cinder.hooks.context import CinderContext
@@ -69,6 +69,8 @@ class CollectionStore:
                 record[field.name] = int(record[field.name])
             if isinstance(field, JSONField) and record.get(field.name) is not None:
                 record[field.name] = json.dumps(record[field.name])
+            if isinstance(field, FileField) and record.get(field.name) is not None:
+                record[field.name] = field.serialize(record[field.name])
             if isinstance(field, DateTimeField) and field.auto_now:
                 record[field.name] = datetime.now(timezone.utc).isoformat()
 
@@ -206,6 +208,8 @@ class CollectionStore:
                     update_values[field.name] = int(update_values[field.name])
                 if isinstance(field, JSONField) and update_values[field.name] is not None:
                     update_values[field.name] = json.dumps(update_values[field.name])
+                if isinstance(field, FileField):
+                    update_values[field.name] = field.serialize(update_values[field.name])
             if isinstance(field, DateTimeField) and field.auto_now:
                 update_values[field.name] = datetime.now(timezone.utc).isoformat()
 
@@ -275,4 +279,6 @@ class CollectionStore:
                     record[field.name] = json.loads(val)
                 except (json.JSONDecodeError, TypeError):
                     pass
+            if isinstance(field, FileField) and isinstance(val, str):
+                record[field.name] = field.deserialize(val)
         return record
