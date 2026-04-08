@@ -22,6 +22,8 @@ from cinder.hooks.context import CinderContext
 from cinder.hooks.registry import HookRegistry
 from cinder.hooks.runner import HookRunner
 from cinder.pipeline import build_middleware_stack
+from cinder.realtime import RealtimeFacade
+from cinder.realtime.broker import RealtimeBroker
 
 logger = logging.getLogger("cinder")
 
@@ -62,6 +64,8 @@ class Cinder:
         self._registry: HookRegistry = HookRegistry()
         self._runner: HookRunner = HookRunner(self._registry)
         self.hooks: _AppHooks = _AppHooks(self._registry, self._runner)
+        self._broker: RealtimeBroker = RealtimeBroker()
+        self.realtime: RealtimeFacade = RealtimeFacade(self._broker, self)
 
     def on(self, event: str, handler=None):
         """Shorthand for ``app.hooks.on(event, handler)``.
@@ -138,12 +142,15 @@ class Cinder:
 
         app_runner = self._runner
 
+        broker = self._broker
+
         @asynccontextmanager
         async def lifespan(app: Starlette):
             await _init()
             await app_runner.fire("app:startup", None, CinderContext.system())
             yield
             await app_runner.fire("app:shutdown", None, CinderContext.system())
+            await broker.close()
             await db.disconnect()
             logger.info("Database disconnected")
 
@@ -158,6 +165,10 @@ class Cinder:
         if auth:
             routes.extend(build_auth_routes(auth, db, secret))
 
+        # Install the auto-emit bridge and add realtime routes
+        self.realtime._install_bridge(self._registry, collections)
+        routes.extend(self.realtime._build_routes(db, secret))
+
         starlette_app = Starlette(routes=routes, lifespan=lifespan)
 
         # LazyInitMiddleware ensures _init() is called before the first request
@@ -168,7 +179,7 @@ class Cinder:
                 self._inner = inner
 
             async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-                if scope["type"] == "http" and not _init_done[0]:
+                if scope["type"] in ("http", "websocket") and not _init_done[0]:
                     await _init()
                 await self._inner(scope, receive, send)
 
