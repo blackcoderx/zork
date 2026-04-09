@@ -1,4 +1,7 @@
+import os
+
 import pytest
+
 from cinder.db.connection import Database
 
 
@@ -54,3 +57,162 @@ async def test_foreign_keys_enabled(db):
     await db.execute("INSERT INTO child (id, parent_id) VALUES ('c1', 'p1')")
     with pytest.raises(Exception):
         await db.execute("INSERT INTO child (id, parent_id) VALUES ('c2', 'nonexistent')")
+
+
+# ---------------------------------------------------------------------------
+# table_exists
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_table_exists_true(db):
+    await db.execute("CREATE TABLE mytable (id TEXT)")
+    assert await db.table_exists("mytable") is True
+
+
+@pytest.mark.asyncio
+async def test_table_exists_false(db):
+    assert await db.table_exists("nonexistent_xyz_table") is False
+
+
+# ---------------------------------------------------------------------------
+# get_columns
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_columns_returns_name_key(db):
+    await db.execute("CREATE TABLE cols (id TEXT, title TEXT, views INTEGER)")
+    cols = await db.get_columns("cols")
+    names = {c["name"] for c in cols}
+    assert "id" in names
+    assert "title" in names
+    assert "views" in names
+
+
+@pytest.mark.asyncio
+async def test_get_columns_empty_after_no_table(db):
+    # get_columns on a nonexistent table returns empty list (PRAGMA behaviour)
+    cols = await db.get_columns("definitely_not_a_table")
+    assert cols == []
+
+
+# ---------------------------------------------------------------------------
+# resolve_backend — dispatch logic (no real connections needed)
+# ---------------------------------------------------------------------------
+
+def test_resolve_backend_bare_path():
+    from cinder.db.backends import resolve_backend
+    from cinder.db.backends.sqlite import SQLiteBackend
+
+    b = resolve_backend("app.db")
+    assert isinstance(b, SQLiteBackend)
+
+
+def test_resolve_backend_sqlite_url():
+    from cinder.db.backends import resolve_backend
+    from cinder.db.backends.sqlite import SQLiteBackend
+
+    b = resolve_backend("sqlite:///data/app.db")
+    assert isinstance(b, SQLiteBackend)
+    assert b._path == "data/app.db"
+
+
+def test_resolve_backend_postgres():
+    from cinder.db.backends import resolve_backend
+    from cinder.db.backends.postgresql import PostgreSQLBackend
+
+    b = resolve_backend("postgresql://user:pass@localhost/db")
+    assert isinstance(b, PostgreSQLBackend)
+
+
+def test_resolve_backend_postgres_alias():
+    from cinder.db.backends import resolve_backend
+    from cinder.db.backends.postgresql import PostgreSQLBackend
+
+    b = resolve_backend("postgres://user:pass@localhost/db")
+    assert isinstance(b, PostgreSQLBackend)
+
+
+def test_resolve_backend_mysql():
+    from cinder.db.backends import resolve_backend
+    from cinder.db.backends.mysql import MySQLBackend
+
+    b = resolve_backend("mysql://user:pass@localhost/db")
+    assert isinstance(b, MySQLBackend)
+
+
+def test_resolve_backend_mysql_aiomysql_scheme():
+    from cinder.db.backends import resolve_backend
+    from cinder.db.backends.mysql import MySQLBackend
+
+    b = resolve_backend("mysql+aiomysql://user:pass@localhost/db")
+    assert isinstance(b, MySQLBackend)
+
+
+# ---------------------------------------------------------------------------
+# resolve_backend — env-var priority chain
+# ---------------------------------------------------------------------------
+
+def test_resolve_backend_env_cinder_database_url_overrides(monkeypatch):
+    """CINDER_DATABASE_URL takes highest priority over all other sources."""
+    from cinder.db.backends import resolve_backend
+    from cinder.db.backends.sqlite import SQLiteBackend
+
+    monkeypatch.setenv("CINDER_DATABASE_URL", "sqlite:///override.db")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    b = resolve_backend("postgresql://user:pass@localhost/db")  # ignored
+    assert isinstance(b, SQLiteBackend)
+    assert b._path == "override.db"
+
+
+def test_resolve_backend_env_database_url_used_when_no_cinder_url(monkeypatch):
+    """DATABASE_URL is used when CINDER_DATABASE_URL is not set."""
+    from cinder.db.backends import resolve_backend
+    from cinder.db.backends.sqlite import SQLiteBackend
+
+    monkeypatch.delenv("CINDER_DATABASE_URL", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///from_env.db")
+
+    b = resolve_backend("app.db")  # ignored
+    assert isinstance(b, SQLiteBackend)
+    assert b._path == "from_env.db"
+
+
+def test_resolve_backend_programmatic_value_used_when_no_env(monkeypatch):
+    """Programmatic URL is used when no env vars are set."""
+    from cinder.db.backends import resolve_backend
+    from cinder.db.backends.sqlite import SQLiteBackend
+
+    monkeypatch.delenv("CINDER_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    b = resolve_backend("sqlite:///programmatic.db")
+    assert isinstance(b, SQLiteBackend)
+    assert b._path == "programmatic.db"
+
+
+def test_resolve_backend_cinder_url_beats_database_url(monkeypatch):
+    """CINDER_DATABASE_URL beats DATABASE_URL when both are set."""
+    from cinder.db.backends import resolve_backend
+    from cinder.db.backends.postgresql import PostgreSQLBackend
+    from cinder.db.backends.sqlite import SQLiteBackend
+
+    monkeypatch.setenv("CINDER_DATABASE_URL", "postgresql://a:b@host/prod")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///dev.db")
+
+    b = resolve_backend("app.db")  # ignored
+    assert isinstance(b, PostgreSQLBackend)
+
+
+# ---------------------------------------------------------------------------
+# DatabaseIntegrityError exposed via Database shim
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_integrity_error_raised_on_unique_violation(db):
+    from cinder.db.backends.base import DatabaseIntegrityError
+
+    await db.execute("CREATE TABLE uniq (id TEXT PRIMARY KEY)")
+    await db.execute("INSERT INTO uniq (id) VALUES (?)", ("dup",))
+    with pytest.raises(DatabaseIntegrityError):
+        await db.execute("INSERT INTO uniq (id) VALUES (?)", ("dup",))
