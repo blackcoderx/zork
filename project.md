@@ -113,6 +113,15 @@ graph TD
 
     %% Invalidation hooks into the hook system
     CACHE_INV -. "registers after_* hooks" .-> HREG
+
+    %% Migrations Subsystem (Feature 3)
+    CLI -. "cinder migrate / doctor / routes / info / generate-secret" .-> MIG["cinder/migrations/ Migration Engine"]
+    MIG --> MIG_ENG["cinder/migrations/engine.py MigrationEngine + _schema_migrations"]
+    MIG --> MIG_DIFF["cinder/migrations/diff.py SchemaComparator (AddTable/AddColumn/DropColumn)"]
+    MIG --> MIG_GEN["cinder/migrations/generator.py Migration File Generator"]
+    MIG_ENG --> DB
+    MIG_DIFF --> DB
+    MIG_DIFF --> SCHEMA
 ```
 
 ---
@@ -128,7 +137,7 @@ graph TD
   - `app.configure_storage(backend)` — sets the `FileStorageBackend` used by all `FileField` columns. Validated at `build()` time.
   - `app.configure_database(backend)` — plugs in a fully pre-configured `DatabaseBackend`. Takes highest precedence over env vars and the `database=` constructor arg. Useful for custom pool settings, SSL, or bring-your-own-driver scenarios.
 * **`pipeline.py`** — Formats HTTP and WebSocket requests. Manages CORS, standardises error shapes, assigns request IDs, and decides whether a request routes to Auth, Collections, or Realtime endpoints.
-* **`cli.py`** — Handles terminal commands (via Typer) for starting the server and scaffolding new projects.
+* **`cli.py`** — Handles terminal commands (via Typer). Commands: `serve`, `init`, `promote`, `generate-secret`, `doctor`, `routes`, `info`, and the `migrate` sub-app (`run`, `status`, `rollback`, `create`). See [Migrations Subsystem](#11-migrations-subsystem-srccindermigrations) below.
 * **`errors.py`** — A unified set of exceptions allowing standard error responses across all modules.
 
 ### 2. The Database Layer (`src/cinder/db/`)
@@ -216,6 +225,36 @@ Cinder's database layer is fully pluggable, mirroring the same backend-ABC patte
 * **`auth.py`** — Utilities for authenticating realtime connections dynamically.
 * **`auth_filter.py`** — Applies RBAC filtering during broadcast, preventing clients from receiving data they shouldn't see.
 
+### 11. Migrations Subsystem (`src/cinder/migrations/`)
+
+CLI-driven, explicit schema migration system that coexists with the existing `sync_schema()` auto-sync. Auto-sync continues to handle additive changes (new tables, new columns) on every startup. Migration files handle version-tracked, complex operations that auto-sync cannot: indexes, data transforms, column drops, renames, and any change requiring an audit trail.
+
+* **`engine.py`** — `MigrationFile` NamedTuple (`id`, `path`) and `MigrationEngine` class:
+  - `discover()` — globs `migrations/*.py`, sorted by filename (timestamp prefix guarantees chronological order).
+  - `ensure_table()` — creates `_schema_migrations (id TEXT PRIMARY KEY, applied_at TEXT NOT NULL)` if absent.
+  - `get_applied()` / `get_pending()` — set operations between discovered files and DB records.
+  - `apply(migration)` — loads the module via `importlib`, validates `up` callable exists, calls `await mod.up(db)`, records the migration with UTC ISO timestamp. Wraps errors with migration ID in the message.
+  - `rollback()` — queries `_schema_migrations ORDER BY applied_at DESC` to find the most-recently-applied migration, calls `await mod.down(db)`, deletes the record. Warns (via `logging`) and removes orphaned records when a migration file has been deleted post-apply.
+  - `run_pending()` / `status()` — batch apply and full status report (including `"orphaned"` entries for applied-but-deleted files).
+
+* **`diff.py`** — `SchemaComparator` for auto-generating migration content from live schema state. Compares each registered `Collection`'s field definitions against `db.get_columns()` and produces: `AddTable(collection)`, `AddColumn(table, field_name, col_sql)`, `DropColumn(table, col_name, destructive=True)`. Built-in columns (`id`, `created_at`, `updated_at`) are excluded from the diff.
+
+* **`generator.py`** — Pure functions for producing migration file content: `generate_migration_id(name)` (timestamp-prefixed slug), `generate_migration_content(operations, name)` (renders `async def up(db)` / `async def down(db)` Python source; destructive `DropColumn` ops are commented out by default), `write_migration_file(migrations_dir, name, content)` (creates the directory if absent, writes the file, returns its `Path`).
+
+* **`__init__.py`** — Exports `MigrationEngine`, `MigrationFile`, `SchemaComparator`, `AddTable`, `AddColumn`, `DropColumn`, `generate_migration_content`, `generate_migration_id`, `write_migration_file`.
+
+Migration files follow the pattern:
+```python
+# migrations/20260409_143022_add_index_posts_category.py
+"""Add index on posts.category"""
+
+async def up(db):
+    await db.execute("CREATE INDEX idx_posts_category ON posts (category)")
+
+async def down(db):
+    await db.execute("DROP INDEX IF EXISTS idx_posts_category")
+```
+
 ---
 
 ## Test Suite Overview
@@ -235,6 +274,7 @@ The test suite lives in `tests/` and is run with `pytest`. All async tests use `
 | File storage | `test_storage_backends.py`, `test_storage_routes.py`, `test_storage_keys.py` |
 | Hooks & lifecycle | `test_hooks.py` |
 | Database layer & backends | `test_db.py` |
+| Migrations (engine, diff, generator) | `test_migrations.py`, `test_migration_diff.py`, `test_migration_generator.py` |
 | Cache backends | `test_cache_backends.py` |
 | Cache invalidation | `test_cache_invalidation.py` |
 | Rate limiting | `test_ratelimit.py` |

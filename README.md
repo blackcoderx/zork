@@ -25,6 +25,7 @@ Define your data schema in Python, and Cinder auto-generates a full CRUD API wit
 - [Redis](#redis)
 - [Middleware](#middleware)
 - [CLI](#cli)
+- [Migrations](#migrations)
 - [Configuration](#configuration)
 - [Roadmap](#roadmap)
 - [License](#license)
@@ -2123,6 +2124,191 @@ cinder promote user@example.com --role moderator --database myapp.db
 | `--role` | `admin` | Role to assign |
 | `--database` | `app.db` | Path to the SQLite database |
 
+### `cinder generate-secret`
+
+Print a cryptographically secure random secret suitable for `CINDER_SECRET`.
+
+```bash
+cinder generate-secret
+# e.g. a3f9d2c1b4e8f7a6d5c3b2e1f0a9d8c7b6e5f4a3d2c1b0e9f8a7d6c5b4e3f2a1
+```
+
+### `cinder doctor`
+
+Check connectivity for your database and Redis (if configured). Exits with code 1 if any check fails — useful as a pre-deploy health gate.
+
+```bash
+cinder doctor --app main.py
+cinder doctor --database postgresql://user:pass@host/db
+```
+
+| Option | Description |
+|--------|-------------|
+| `--app APP` | Load DB URL from the Cinder app |
+| `--database URL` | Database URL to test directly |
+
+If neither is provided, falls back to `CINDER_DATABASE_URL` → `DATABASE_URL` → `app.db`.
+
+### `cinder routes`
+
+Print every registered route in the application.
+
+```bash
+cinder routes --app main.py
+```
+
+Output:
+```
+METHOD   PATH                        NAME
+GET      /api/posts                  list_posts
+POST     /api/posts                  create_posts
+GET      /api/posts/{id}             get_posts
+...
+GET      /docs                       swagger_ui
+GET      /openapi.json               openapi
+```
+
+### `cinder info`
+
+Print app metadata without starting the server.
+
+```bash
+cinder info --app main.py
+```
+
+Output:
+```
+Title:      My App
+Version:    1.0.0
+Python:     3.13.0
+Cinder:     0.1.0
+Database:   postgresql://***:***@host/mydb
+Collections (3): posts, comments, users
+Auth:       enabled
+Storage:    S3CompatibleBackend
+Broker:     RealtimeBroker
+```
+
+### `cinder migrate`
+
+Apply pending migration files. See the [Migrations](#migrations) section for the full guide.
+
+```bash
+cinder migrate --app main.py           # apply pending
+cinder migrate status --app main.py   # show history
+cinder migrate rollback --app main.py # undo last
+cinder migrate create add_index_posts --app main.py          # blank template
+cinder migrate create add_missing_cols --app main.py --auto  # auto-generate from schema diff
+```
+
+---
+
+## Migrations
+
+Cinder's migration system provides explicit, version-tracked control over schema changes that go beyond the automatic column additions handled by [Schema Auto-Sync](#schema-auto-sync).
+
+### When to Use Migrations vs Auto-Sync
+
+| Change | Auto-Sync | Migration |
+|--------|-----------|-----------|
+| Add a new column | ✅ Handled on startup | Optional (for audit trail) |
+| Create a new collection | ✅ Handled on startup | Optional |
+| Add a database index | ❌ | ✅ Write a migration |
+| Rename a column | ❌ | ✅ Write a migration |
+| Transform existing data | ❌ | ✅ Write a migration |
+| Drop a column | ❌ (preserved forever) | ✅ Uncomment generated SQL |
+
+**Both run together** — auto-sync handles additive changes on every app startup; migration files handle the rest and are applied explicitly via `cinder migrate`.
+
+### Migration Files
+
+Migration files live in a `migrations/` directory. Each file is timestamped (`YYYYMMDD_HHMMSS_description.py`) and contains two async functions:
+
+```python
+# migrations/20260409_143022_add_index_posts_category.py
+"""Add index on posts.category for faster category filtering."""
+
+async def up(db):
+    await db.execute("CREATE INDEX idx_posts_category ON posts (category)")
+
+async def down(db):
+    await db.execute("DROP INDEX IF EXISTS idx_posts_category")
+```
+
+The `db` argument is Cinder's `Database` object — call `db.execute()`, `db.fetch_all()`, `db.fetch_one()`, or any other method directly.
+
+### Creating Migration Files
+
+**Blank template** (you write the SQL):
+```bash
+cinder migrate create add_index_posts --app main.py
+# Created migration: migrations/20260409_143022_add_index_posts.py
+```
+
+**Auto-generate from schema diff** (compares Collection definitions vs live DB):
+```bash
+cinder migrate create sync_schema --app main.py --auto
+```
+
+The `--auto` flag generates SQL for:
+- New collections not yet in the database → `CREATE TABLE`
+- New fields not yet in existing tables → `ALTER TABLE ADD COLUMN`
+- Columns in the DB not in any collection → commented-out `DROP COLUMN` (destructive — requires manual uncomment)
+
+### Applying Migrations
+
+```bash
+# Apply all pending
+cinder migrate --app main.py
+
+# Or explicitly
+cinder migrate run --app main.py
+```
+
+Cinder applies each pending file in filename order and records it in `_schema_migrations`.
+
+### Checking Status
+
+```bash
+cinder migrate status --app main.py
+```
+
+```
+ID                                           STATUS    APPLIED AT
+20260409_143022_add_index_posts_category     applied   2026-04-09T14:30:22+00:00
+20260410_090000_add_audit_table              pending   -
+```
+
+Orphaned entries (applied but file deleted) appear with status `orphaned`.
+
+### Rolling Back
+
+```bash
+cinder migrate rollback --app main.py
+```
+
+Rolls back the most recently applied migration (by `applied_at` timestamp) by calling its `down()` function and removing the tracking record.
+
+### Custom Migrations Directory
+
+All migrate commands accept `--dir` to override the default `migrations/` path:
+
+```bash
+cinder migrate --app main.py --dir db/migrations
+cinder migrate create add_index --app main.py --dir db/migrations
+```
+
+### Migration Tracking
+
+Applied migrations are recorded in `_schema_migrations`:
+
+```sql
+CREATE TABLE _schema_migrations (
+    id         TEXT PRIMARY KEY,   -- migration filename without .py
+    applied_at TEXT NOT NULL       -- UTC ISO 8601 timestamp
+)
+```
+
 ---
 
 ## Configuration
@@ -2168,7 +2354,7 @@ CINDER_SECRET=your-secret-key-here
 Generate a secure secret:
 
 ```bash
-python -c "import secrets; print(secrets.token_urlsafe(32))"
+cinder generate-secret
 ```
 
 ### Database
@@ -2188,14 +2374,15 @@ In production, set `DATABASE_URL` (or `CINDER_DATABASE_URL`) in your environment
 
 ## Roadmap
 
-See [phases.md](phases.md) for the full roadmap of upcoming features:
-
 - **Phase 3** — Hooks & Lifecycle Events ✅
 - **Phase 4** — File Storage (local + S3-compatible) ✅
 - **Phase 5** — Email & Notifications ✅
 - **Phase 6** — Realtime (WebSocket + SSE) ✅
 - **Phase 8** — Redis & Caching ✅
 - **Multi-Database Support** — PostgreSQL, MySQL, pluggable backends, env-var database switching ✅
+- **OpenAPI / Swagger** — `GET /openapi.json`, Swagger UI, ReDoc ✅
+- **Schema Migrations** — `cinder migrate`, version-tracked migration files, auto-generate from schema diff, rollback ✅
+- **CLI Improvements** — `generate-secret`, `doctor`, `routes`, `info`, `migrate` sub-app ✅
 
 ---
 
