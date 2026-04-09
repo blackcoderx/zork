@@ -1,50 +1,53 @@
-import aiosqlite
+from __future__ import annotations
+
+from cinder.db.backends import resolve_backend
+from cinder.db.backends.base import DatabaseBackend
 
 
 class Database:
-    """Async SQLite database connection manager.
+    """Multi-database connection manager.
 
-    Uses WAL mode for concurrent reads and returns rows as dictionaries.
-    Supports lazy connection: auto-connects on first use if not already connected.
+    Accepts a URL or a bare SQLite file path (backward compatible):
+        "app.db"                           → SQLite (default, zero config)
+        "sqlite:///app.db"                 → SQLite
+        "postgresql://user:pass@host/db"   → PostgreSQL (requires asyncpg)
+        "postgres://user:pass@host/db"     → PostgreSQL (requires asyncpg)
+        "mysql://user:pass@host/db"        → MySQL (requires aiomysql)
+
+    Environment variables override the programmatic value:
+        CINDER_DATABASE_URL   — highest priority (Cinder-specific)
+        DATABASE_URL          — second priority (standard PaaS convention)
+
+    Pool size (PostgreSQL / MySQL):
+        CINDER_DB_POOL_MIN    — minimum connections (default: 1)
+        CINDER_DB_POOL_MAX    — maximum connections (default: 10)
+        CINDER_DB_POOL_TIMEOUT    — seconds to wait for a free connection (default: 30)
+        CINDER_DB_CONNECT_TIMEOUT — seconds to open a new connection (default: 10)
     """
 
-    def __init__(self, path: str):
-        self.path = path
-        self._connection: aiosqlite.Connection | None = None
+    def __init__(self, url: str = "app.db"):
+        self.url = url
+        self._backend: DatabaseBackend = resolve_backend(url)
 
     async def connect(self) -> None:
-        if self._connection is not None:
-            return
-        self._connection = await aiosqlite.connect(self.path)
-        self._connection.row_factory = aiosqlite.Row
-        await self._connection.execute("PRAGMA journal_mode=WAL")
-        await self._connection.execute("PRAGMA foreign_keys=ON")
-        await self._connection.commit()
+        await self._backend.connect()
 
     async def disconnect(self) -> None:
-        if self._connection:
-            await self._connection.close()
-            self._connection = None
-
-    async def _ensure_connected(self) -> None:
-        if self._connection is None:
-            await self.connect()
+        await self._backend.disconnect()
 
     async def execute(self, sql: str, params: tuple = ()) -> None:
-        await self._ensure_connected()
-        await self._connection.execute(sql, params)
-        await self._connection.commit()
+        await self._backend.execute(sql, params)
 
     async def fetch_one(self, sql: str, params: tuple = ()) -> dict | None:
-        await self._ensure_connected()
-        cursor = await self._connection.execute(sql, params)
-        row = await cursor.fetchone()
-        if row is None:
-            return None
-        return dict(row)
+        return await self._backend.fetch_one(sql, params)
 
     async def fetch_all(self, sql: str, params: tuple = ()) -> list[dict]:
-        await self._ensure_connected()
-        cursor = await self._connection.execute(sql, params)
-        rows = await cursor.fetchall()
-        return [dict(r) for r in rows]
+        return await self._backend.fetch_all(sql, params)
+
+    async def table_exists(self, name: str) -> bool:
+        """Return True if a table with the given name exists."""
+        return await self._backend.table_exists(name)
+
+    async def get_columns(self, name: str) -> list[dict]:
+        """Return column descriptors for the given table (each has a 'name' key)."""
+        return await self._backend.get_columns(name)

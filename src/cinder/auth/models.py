@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from cinder.db.backends.base import DatabaseIntegrityError
 from cinder.db.connection import Database
 
 USERS_TABLE = "_users"
@@ -63,10 +64,15 @@ async def cleanup_expired_blocklist(db: Database) -> None:
 
 
 async def block_token(db: Database, jti: str, expires_at: str) -> None:
-    await db.execute(
-        f"INSERT OR IGNORE INTO {TOKEN_BLOCKLIST_TABLE} (jti, expires_at) VALUES (?, ?)",
-        (jti, expires_at),
-    )
+    """Add a JWT to the blocklist. Idempotent — safe to call multiple times."""
+    try:
+        await db.execute(
+            f"INSERT INTO {TOKEN_BLOCKLIST_TABLE} (jti, expires_at) VALUES (?, ?)",
+            (jti, expires_at),
+        )
+    except DatabaseIntegrityError:
+        # Token already blocked — idempotent, safe to ignore.
+        pass
 
 
 async def is_blocked(db: Database, jti: str) -> bool:

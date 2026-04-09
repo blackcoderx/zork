@@ -29,7 +29,16 @@ s3 = ["boto3>=1.34.0"]
 email = ["aiosmtplib>=3.0.0"]
 redis = ["redis>=5.0.0"]
 realtime = ["redis>=5.0.0"]
-all = ["anthropic>=0.40.0", "boto3>=1.34.0", "aiosmtplib>=3.0.0", "redis>=5.0.0"]
+postgres = ["asyncpg>=0.29.0"]
+mysql = ["aiomysql>=0.2.0"]
+all = [
+    "anthropic>=0.40.0",
+    "boto3>=1.34.0",
+    "aiosmtplib>=3.0.0",
+    "redis>=5.0.0",
+    "asyncpg>=0.29.0",
+    "aiomysql>=0.2.0",
+]
 dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0", "httpx>=0.27.0", "fakeredis>=2.20.0"]
 
 [project.scripts]

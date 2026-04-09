@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
-import sqlite3
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
 from cinder.collections.schema import Collection, BoolField, DateTimeField, FileField, JSONField
+from cinder.db.backends.base import DatabaseIntegrityError
 from cinder.db.connection import Database
 from cinder.errors import CANCEL_DELETE_MESSAGE, CinderError
 from cinder.hooks.context import CinderContext
@@ -22,18 +22,12 @@ class CollectionStore:
         self.db = db
 
     async def sync_schema(self, collection: Collection) -> None:
-        table_exists = await self.db.fetch_one(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-            (collection.name,),
-        )
-        if not table_exists:
+        if not await self.db.table_exists(collection.name):
             sql = collection.build_create_table_sql()
             await self.db.execute(sql)
             return
 
-        existing_cols = await self.db.fetch_all(
-            f"PRAGMA table_info({collection.name})"
-        )
+        existing_cols = await self.db.get_columns(collection.name)
         existing_names = {col["name"] for col in existing_cols}
         schema_names = {f.name for f in collection.fields}
         schema_names.update({"id", "created_at", "updated_at"})
@@ -93,7 +87,7 @@ class CollectionStore:
                 f"INSERT INTO {collection.name} ({columns}) VALUES ({placeholders})",
                 values,
             )
-        except sqlite3.IntegrityError as exc:
+        except DatabaseIntegrityError as exc:
             raise CinderError(400, str(exc)) from exc
 
         saved = self._deserialize(collection, record)
@@ -231,7 +225,7 @@ class CollectionStore:
                 f"UPDATE {collection.name} SET {set_clauses} WHERE id = ?",
                 tuple(params),
             )
-        except sqlite3.IntegrityError as exc:
+        except DatabaseIntegrityError as exc:
             raise CinderError(400, str(exc)) from exc
 
         updated = await self._raw_get(collection, id)

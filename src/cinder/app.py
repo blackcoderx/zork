@@ -412,6 +412,33 @@ class Cinder:
         self.email: _EmailConfig = _EmailConfig()
         # Phase 4: file storage
         self._storage_backend = None
+        # Multi-DB: optional pre-configured backend (set via configure_database())
+        self._db_backend_override = None
+
+    def configure_database(self, backend) -> "Cinder":
+        """Plug in a fully pre-configured :class:`~cinder.db.backends.base.DatabaseBackend`.
+
+        Takes precedence over ``CINDER_DATABASE_URL``, ``DATABASE_URL``, and
+        the ``database=`` constructor argument.  Use this when you need full
+        control over pool size, SSL, timeouts, or a custom driver::
+
+            from cinder.db.backends.postgresql import PostgreSQLBackend
+
+            app.configure_database(
+                PostgreSQLBackend(
+                    url=os.environ["DATABASE_URL"],
+                    min_size=2,
+                    max_size=20,
+                    ssl="require",
+                )
+            )
+
+        You can also pass any class that implements the
+        :class:`~cinder.db.backends.base.DatabaseBackend` ABC (e.g. a Turso /
+        libsql adapter).
+        """
+        self._db_backend_override = backend
+        return self
 
     def configure_storage(self, backend) -> "Cinder":
         """Set the file storage backend used by all ``FileField`` columns.
@@ -513,7 +540,13 @@ class Cinder:
         return self._broker
 
     def build(self) -> Starlette:
-        db = Database(self.database)
+        if self._db_backend_override is not None:
+            # Developer supplied a fully pre-configured backend — bypass URL resolution.
+            db = Database.__new__(Database)
+            db.url = self.database
+            db._backend = self._db_backend_override
+        else:
+            db = Database(self.database)
         store = CollectionStore(db)
         secret = self._get_secret()
         collections = self._collections
