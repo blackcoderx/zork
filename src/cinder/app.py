@@ -9,7 +9,7 @@ from functools import partial
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -633,6 +633,126 @@ class Cinder:
         async def health(request: Request) -> JSONResponse:
             return JSONResponse({"status": "ok"})
 
+        async def index(request: Request) -> HTMLResponse:
+            html_content = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cinder Framework</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --charcoal: #2A2A2A;
+            --white: #F9F9F9;
+            --blazing-orange: #FF5A00;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'JetBrains Mono', monospace;
+            background-color: var(--white);
+            color: var(--charcoal);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            border: 16px solid var(--charcoal);
+            box-sizing: border-box;
+            position: relative;
+            overflow: hidden;
+        }
+        body::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background-image:
+                linear-gradient(var(--charcoal) 2px, transparent 2px),
+                linear-gradient(90deg, var(--charcoal) 2px, transparent 2px);
+            background-size: 60px 60px;
+            opacity: 0.06;
+            animation: pan 20s linear infinite;
+            z-index: -1;
+        }
+        @keyframes pan {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(60px, 60px); }
+        }
+        .container {
+            text-align: center;
+            padding: 4rem 3rem;
+            position: relative;
+            max-width: 90vw;
+        }
+        h1 {
+            font-size: clamp(4rem, 10vw, 8rem);
+            font-weight: 800;
+            margin: 0 0 0.5rem 0;
+            text-transform: uppercase;
+            letter-spacing: -4px;
+            line-height: 1;
+        }
+        p {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 3rem;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.6;
+        }
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem 2rem;
+            border: 2px solid var(--charcoal);
+            background: var(--white);
+            font-weight: 800;
+            font-size: 1.25rem;
+            text-transform: uppercase;
+            box-shadow: 8px 8px 0 var(--charcoal);
+            transition: all 0.2s ease;
+            cursor: default;
+        }
+        .status:hover {
+            transform: translate(-3px, -3px);
+            box-shadow: 3px 3px 0 var(--charcoal);
+        }
+        .status-dot {
+            width: 16px;
+            height: 16px;
+            background-color: var(--blazing-orange);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 90, 0, 0.8); }
+            70% { box-shadow: 0 0 0 12px rgba(255, 90, 0, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 90, 0, 0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Cinder</h1>
+        <p>Your blazing fast Python backend is up and running.</p>
+        <div class="status">
+            <div class="status-dot"></div>
+            Status: OK
+        </div>
+    </div>
+</body>
+</html>"""
+            return HTMLResponse(html_content)
+
+        routes.append(Route("/", index, methods=["GET"]))
         routes.append(Route("/api/health", health, methods=["GET"]))
         routes.extend(
             build_collection_routes(
