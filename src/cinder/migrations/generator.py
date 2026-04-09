@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from .diff import AddTable, AddColumn, DropColumn
@@ -7,8 +8,7 @@ def generate_migration_id(name: str) -> str:
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     slug = name.lower().strip().replace(" ", "_").replace("-", "_")
     # remove non-alphanumeric chars except underscore
-    import re
-    slug = re.sub(r"[^\w]", "_", slug)
+    slug = re.sub(r"[^a-z0-9_]", "_", slug)
     return f"{ts}_{slug}"
 
 
@@ -22,9 +22,8 @@ def generate_migration_content(operations: list | None = None, name: str = "") -
 
     for op in operations:
         if isinstance(op, AddTable):
-            sql = op.collection.build_create_table_sql()
-            # escape triple quotes in sql just in case
-            up_lines.append(f'    await db.execute("""\n        {sql}\n    """)')
+            sql = op.collection.build_create_table_sql().replace('"', '\\"')
+            up_lines.append(f'    await db.execute("{sql}")')
             down_lines.append(f'    await db.execute("DROP TABLE IF EXISTS {op.collection.name}")')
         elif isinstance(op, AddColumn):
             up_lines.append(f'    await db.execute("ALTER TABLE {op.table} ADD COLUMN {op.col_sql}")')

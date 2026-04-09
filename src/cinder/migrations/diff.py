@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from cinder.collections.schema import Collection
 from cinder.db.connection import Database
 
