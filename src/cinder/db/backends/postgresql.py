@@ -95,11 +95,20 @@ class PostgreSQLBackend(DatabaseBackend):
                 async with self._pool.acquire() as conn:
                     await conn.execute(sql, *params)
                 return
-            except (asyncpg.UniqueViolationError, asyncpg.IntegrityConstraintViolationError) as exc:
+            except (
+                asyncpg.UniqueViolationError,
+                asyncpg.IntegrityConstraintViolationError,
+            ) as exc:
                 raise DatabaseIntegrityError(str(exc)) from exc
-            except (asyncpg.PostgresConnectionError, asyncpg.TooManyConnectionsError, OSError) as exc:
+            except (
+                asyncpg.PostgresConnectionError,
+                asyncpg.TooManyConnectionsError,
+                OSError,
+            ) as exc:
                 if attempt == 0:
-                    logger.warning("PostgreSQL connection error (retrying once): %s", exc)
+                    logger.warning(
+                        "PostgreSQL connection error (retrying once): %s", exc
+                    )
                     continue
                 raise
 
@@ -113,9 +122,15 @@ class PostgreSQLBackend(DatabaseBackend):
                 async with self._pool.acquire() as conn:
                     row = await conn.fetchrow(sql, *params)
                     return dict(row) if row else None
-            except (asyncpg.PostgresConnectionError, asyncpg.TooManyConnectionsError, OSError) as exc:
+            except (
+                asyncpg.PostgresConnectionError,
+                asyncpg.TooManyConnectionsError,
+                OSError,
+            ) as exc:
                 if attempt == 0:
-                    logger.warning("PostgreSQL connection error (retrying once): %s", exc)
+                    logger.warning(
+                        "PostgreSQL connection error (retrying once): %s", exc
+                    )
                     continue
                 raise
 
@@ -129,9 +144,15 @@ class PostgreSQLBackend(DatabaseBackend):
                 async with self._pool.acquire() as conn:
                     rows = await conn.fetch(sql, *params)
                     return [dict(r) for r in rows]
-            except (asyncpg.PostgresConnectionError, asyncpg.TooManyConnectionsError, OSError) as exc:
+            except (
+                asyncpg.PostgresConnectionError,
+                asyncpg.TooManyConnectionsError,
+                OSError,
+            ) as exc:
                 if attempt == 0:
-                    logger.warning("PostgreSQL connection error (retrying once): %s", exc)
+                    logger.warning(
+                        "PostgreSQL connection error (retrying once): %s", exc
+                    )
                     continue
                 raise
 
@@ -151,3 +172,17 @@ class PostgreSQLBackend(DatabaseBackend):
             "WHERE table_schema = 'public' AND table_name = ?",
             (name,),
         )
+
+    async def get_indexes(self, table: str) -> list[str]:
+        rows = await self.fetch_all(
+            "SELECT indexname FROM pg_indexes WHERE tablename=? AND indexname NOT LIKE '%_pkey'",
+            (table,),
+        )
+        return [r["indexname"] for r in rows]
+
+    async def index_exists(self, table: str, index_name: str) -> bool:
+        row = await self.fetch_one(
+            "SELECT 1 FROM pg_indexes WHERE tablename=? AND indexname=?",
+            (table, index_name),
+        )
+        return row is not None

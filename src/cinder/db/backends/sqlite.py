@@ -73,3 +73,17 @@ class SQLiteBackend(DatabaseBackend):
         # definitions (never from user input), so this is safe.
         return await self.fetch_all(f"PRAGMA table_info({name})")
         # Each row has a 'name' key — matches the contract expected by store.py
+
+    async def get_indexes(self, table: str) -> list[str]:
+        rows = await self.fetch_all(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=? AND name NOT LIKE 'sqlite_%'",
+            (table,),
+        )
+        return [r["name"] for r in rows]
+
+    async def index_exists(self, table: str, index_name: str) -> bool:
+        row = await self.fetch_one(
+            "SELECT 1 FROM sqlite_master WHERE type='index' AND tbl_name=? AND name=?",
+            (table, index_name),
+        )
+        return row is not None

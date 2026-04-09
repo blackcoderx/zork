@@ -37,10 +37,8 @@ class MySQLBackend(DatabaseBackend):
         max_size: int | None = None,
     ) -> None:
         # Normalise dialect prefixes to a plain mysql:// URL for urlparse
-        normalised = (
-            url
-            .replace("mysql+aiomysql://", "mysql://")
-            .replace("mysql+asyncmy://", "mysql://")
+        normalised = url.replace("mysql+aiomysql://", "mysql://").replace(
+            "mysql+asyncmy://", "mysql://"
         )
         parsed = urlparse(normalised)
         self._host = parsed.hostname or "localhost"
@@ -181,3 +179,19 @@ class MySQLBackend(DatabaseBackend):
             "WHERE table_schema = DATABASE() AND table_name = ?",
             (name,),
         )
+
+    async def get_indexes(self, table: str) -> list[str]:
+        rows = await self.fetch_all(
+            "SELECT DISTINCT index_name FROM information_schema.statistics "
+            "WHERE table_schema=DATABASE() AND table_name=? AND index_name != 'PRIMARY'",
+            (table,),
+        )
+        return [r["index_name"] for r in rows]
+
+    async def index_exists(self, table: str, index_name: str) -> bool:
+        row = await self.fetch_one(
+            "SELECT 1 FROM information_schema.statistics "
+            "WHERE table_schema=DATABASE() AND table_name=? AND index_name=? LIMIT 1",
+            (table, index_name),
+        )
+        return row is not None

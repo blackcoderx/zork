@@ -20,11 +20,13 @@ class Field:
         required: bool = False,
         default: Any = None,
         unique: bool = False,
+        indexed: bool = False,
     ):
         self.name = name
         self.required = required
         self.default = default
         self.unique = unique
+        self.indexed = indexed
 
     def sqlite_type(self) -> str:
         raise NotImplementedError
@@ -43,10 +45,20 @@ class Field:
 
 
 class TextField(Field):
-    def __init__(self, name: str, *, required: bool = False, default: Any = None,
-                 unique: bool = False, min_length: int | None = None,
-                 max_length: int | None = None):
-        super().__init__(name, required=required, default=default, unique=unique)
+    def __init__(
+        self,
+        name: str,
+        *,
+        required: bool = False,
+        default: Any = None,
+        unique: bool = False,
+        indexed: bool = False,
+        min_length: int | None = None,
+        max_length: int | None = None,
+    ):
+        super().__init__(
+            name, required=required, default=default, unique=unique, indexed=indexed
+        )
         self.min_length = min_length
         self.max_length = max_length
 
@@ -67,10 +79,20 @@ class TextField(Field):
 
 
 class IntField(Field):
-    def __init__(self, name: str, *, required: bool = False, default: Any = None,
-                 unique: bool = False, min_value: int | None = None,
-                 max_value: int | None = None):
-        super().__init__(name, required=required, default=default, unique=unique)
+    def __init__(
+        self,
+        name: str,
+        *,
+        required: bool = False,
+        default: Any = None,
+        unique: bool = False,
+        indexed: bool = False,
+        min_value: int | None = None,
+        max_value: int | None = None,
+    ):
+        super().__init__(
+            name, required=required, default=default, unique=unique, indexed=indexed
+        )
         self.min_value = min_value
         self.max_value = max_value
 
@@ -91,10 +113,20 @@ class IntField(Field):
 
 
 class FloatField(Field):
-    def __init__(self, name: str, *, required: bool = False, default: Any = None,
-                 unique: bool = False, min_value: float | None = None,
-                 max_value: float | None = None):
-        super().__init__(name, required=required, default=default, unique=unique)
+    def __init__(
+        self,
+        name: str,
+        *,
+        required: bool = False,
+        default: Any = None,
+        unique: bool = False,
+        indexed: bool = False,
+        min_value: float | None = None,
+        max_value: float | None = None,
+    ):
+        super().__init__(
+            name, required=required, default=default, unique=unique, indexed=indexed
+        )
         self.min_value = min_value
         self.max_value = max_value
 
@@ -115,6 +147,19 @@ class FloatField(Field):
 
 
 class BoolField(Field):
+    def __init__(
+        self,
+        name: str,
+        *,
+        required: bool = False,
+        default: Any = None,
+        unique: bool = False,
+        indexed: bool = False,
+    ):
+        super().__init__(
+            name, required=required, default=default, unique=unique, indexed=indexed
+        )
+
     def sqlite_type(self) -> str:
         return "INTEGER"
 
@@ -127,9 +172,19 @@ class BoolField(Field):
 
 
 class DateTimeField(Field):
-    def __init__(self, name: str, *, required: bool = False, default: Any = None,
-                 unique: bool = False, auto_now: bool = False):
-        super().__init__(name, required=required, default=default, unique=unique)
+    def __init__(
+        self,
+        name: str,
+        *,
+        required: bool = False,
+        default: Any = None,
+        unique: bool = False,
+        indexed: bool = False,
+        auto_now: bool = False,
+    ):
+        super().__init__(
+            name, required=required, default=default, unique=unique, indexed=indexed
+        )
         self.auto_now = auto_now
 
     def sqlite_type(self) -> str:
@@ -144,6 +199,19 @@ class DateTimeField(Field):
 
 
 class URLField(Field):
+    def __init__(
+        self,
+        name: str,
+        *,
+        required: bool = False,
+        default: Any = None,
+        unique: bool = False,
+        indexed: bool = False,
+    ):
+        super().__init__(
+            name, required=required, default=default, unique=unique, indexed=indexed
+        )
+
     def sqlite_type(self) -> str:
         return "TEXT"
 
@@ -156,6 +224,19 @@ class URLField(Field):
 
 
 class JSONField(Field):
+    def __init__(
+        self,
+        name: str,
+        *,
+        required: bool = False,
+        default: Any = None,
+        unique: bool = False,
+        indexed: bool = False,
+    ):
+        super().__init__(
+            name, required=required, default=default, unique=unique, indexed=indexed
+        )
+
     def sqlite_type(self) -> str:
         return "TEXT"
 
@@ -204,8 +285,11 @@ class FileField(Field):
         multiple: bool = False,
         public: bool = False,
         required: bool = False,
+        indexed: bool = False,
     ) -> None:
-        super().__init__(name, required=required, default=None, unique=False)
+        super().__init__(
+            name, required=required, default=None, unique=False, indexed=indexed
+        )
         self.max_size = max_size
         self.allowed_types: list[str] = allowed_types or ["*/*"]
         self.multiple = multiple
@@ -249,9 +333,18 @@ class FileField(Field):
 
 
 class RelationField(Field):
-    def __init__(self, name: str, *, collection: str, required: bool = False,
-                 unique: bool = False):
-        super().__init__(name, required=required, default=None, unique=unique)
+    def __init__(
+        self,
+        name: str,
+        *,
+        collection: str,
+        required: bool = False,
+        unique: bool = False,
+        indexed: bool = False,
+    ):
+        super().__init__(
+            name, required=required, default=None, unique=unique, indexed=indexed
+        )
         self.collection = collection
 
     def sqlite_type(self) -> str:
@@ -266,9 +359,15 @@ class RelationField(Field):
 class Collection:
     """A named schema that Cinder turns into a full CRUD API."""
 
-    def __init__(self, name: str, fields: list[Field]):
+    def __init__(
+        self,
+        name: str,
+        fields: list[Field],
+        indexes: list[tuple[str, ...]] | None = None,
+    ):
         self.name = name
         self.fields = fields
+        self.indexes: list[tuple[str, ...]] = indexes or []
         # Each collection starts with its own registry/runner so it is
         # usable standalone (tests, scripts). When the collection is
         # registered on a Cinder app, ``bind_registry`` swaps in the app's
@@ -309,9 +408,11 @@ class Collection:
         """
         full = f"{self.name}:{event}"
         if handler is None:
+
             def decorator(fn: Callable) -> Callable:
                 self._registry.on(full, fn)
                 return fn
+
             return decorator
         self._registry.on(full, handler)
         return handler
@@ -335,6 +436,21 @@ class Collection:
         columns.append("updated_at TEXT NOT NULL")
         col_str = ", ".join(columns)
         return f"CREATE TABLE IF NOT EXISTS {self.name} ({col_str})"
+
+    def build_index_sqls(self) -> list[str]:
+        """Generate all CREATE INDEX statements for this collection."""
+        sqls = []
+        for field in self.fields:
+            if field.indexed and not field.unique:
+                idx = f"idx_{self.name}_{field.name}"
+                sqls.append(
+                    f"CREATE INDEX IF NOT EXISTS {idx} ON {self.name} ({field.name})"
+                )
+        for cols in self.indexes:
+            idx = f"idx_{self.name}_{'_'.join(cols)}"
+            col_list = ", ".join(cols)
+            sqls.append(f"CREATE INDEX IF NOT EXISTS {idx} ON {self.name} ({col_list})")
+        return sqls
 
     def build_pydantic_model(self) -> type[BaseModel]:
         """Dynamically create a Pydantic model for input validation."""

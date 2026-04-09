@@ -1,26 +1,32 @@
 """Cinder — A lightweight backend framework for Python."""
 
 from dotenv import load_dotenv
-load_dotenv()
 
 from cinder.app import Cinder
 from cinder.auth import Auth
+from cinder.cache.backends import CacheBackend, MemoryCacheBackend, RedisCacheBackend
 from cinder.collections.schema import (
-    Collection,
-    Field,
-    TextField,
-    IntField,
-    FloatField,
     BoolField,
+    Collection,
     DateTimeField,
-    URLField,
+    Field,
+    FloatField,
+    IntField,
     JSONField,
     RelationField,
+    TextField,
+    URLField,
 )
 from cinder.errors import CinderError
-from cinder.cache.backends import CacheBackend, MemoryCacheBackend, RedisCacheBackend
-from cinder.ratelimit.backends import RateLimitBackend, MemoryRateLimitBackend, RedisRateLimitBackend
+from cinder.ratelimit.backends import (
+    MemoryRateLimitBackend,
+    RateLimitBackend,
+    RedisRateLimitBackend,
+)
 from cinder.ratelimit.middleware import RateLimitRule
+
+load_dotenv()
+
 
 __all__ = [
     "Cinder",

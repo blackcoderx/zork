@@ -1,7 +1,7 @@
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from .diff import AddTable, AddColumn, DropColumn
+from .diff import AddTable, AddColumn, DropColumn, AddIndex, DropIndex
 
 
 def generate_migration_id(name: str) -> str:
@@ -23,16 +23,46 @@ def generate_migration_content(operations: list | None = None, name: str = "") -
     for op in operations:
         if isinstance(op, AddTable):
             sql = op.collection.build_create_table_sql()
-            up_lines.append(f'    await db.execute({repr(sql)})')
-            down_lines.append(f'    await db.execute("DROP TABLE IF EXISTS {op.collection.name}")')
+            up_lines.append(f"    await db.execute({repr(sql)})")
+            down_lines.append(
+                f'    await db.execute("DROP TABLE IF EXISTS {op.collection.name}")'
+            )
         elif isinstance(op, AddColumn):
-            up_lines.append(f'    await db.execute("ALTER TABLE {op.table} ADD COLUMN {op.col_sql}")')
-            down_lines.append(f'    # DROP COLUMN not supported on SQLite < 3.35.0')
-            down_lines.append(f'    # await db.execute("ALTER TABLE {op.table} DROP COLUMN {op.field_name}")')
+            up_lines.append(
+                f'    await db.execute("ALTER TABLE {op.table} ADD COLUMN {op.col_sql}")'
+            )
+            down_lines.append(f"    # DROP COLUMN not supported on SQLite < 3.35.0")
+            down_lines.append(
+                f'    # await db.execute("ALTER TABLE {op.table} DROP COLUMN {op.field_name}")'
+            )
         elif isinstance(op, DropColumn):
-            up_lines.append(f'    # DESTRUCTIVE: uncomment to drop column {op.table}.{op.col_name}')
-            up_lines.append(f'    # await db.execute("ALTER TABLE {op.table} DROP COLUMN {op.col_name}")')
-            down_lines.append(f'    # Cannot restore dropped column {op.col_name} automatically - restore from backup')
+            up_lines.append(
+                f"    # DESTRUCTIVE: uncomment to drop column {op.table}.{op.col_name}"
+            )
+            up_lines.append(
+                f'    # await db.execute("ALTER TABLE {op.table} DROP COLUMN {op.col_name}")'
+            )
+            down_lines.append(
+                f"    # Cannot restore dropped column {op.col_name} automatically - restore from backup"
+            )
+        elif isinstance(op, AddIndex):
+            col_list = ", ".join(op.columns)
+            up_lines.append(
+                f'    await db.execute("CREATE INDEX IF NOT EXISTS {op.index_name} ON {op.table} ({col_list})")'
+            )
+            down_lines.append(
+                f'    await db.execute("DROP INDEX IF EXISTS {op.index_name}")'
+            )
+        elif isinstance(op, DropIndex):
+            up_lines.append(
+                f"    # DESTRUCTIVE: uncomment to drop index {op.index_name}"
+            )
+            up_lines.append(
+                f'    # await db.execute("DROP INDEX IF EXISTS {op.index_name}")'
+            )
+            down_lines.append(
+                f"    # Cannot restore index {op.index_name} automatically — re-create manually if needed"
+            )
 
     if not up_lines:
         up_lines = ["    pass"]
@@ -44,24 +74,24 @@ def generate_migration_content(operations: list | None = None, name: str = "") -
 
     header = f'"""\n{name}\n"""\n\n' if name else ""
 
-    return f'''{header}async def up(db):
+    return f"""{header}async def up(db):
 {up_body}
 
 
 async def down(db):
 {down_body}
-'''
+"""
 
 
 def _blank_template(name: str = "") -> str:
     header = f'"""\n{name}\n"""\n\n' if name else ""
-    return f'''{header}async def up(db):
+    return f"""{header}async def up(db):
     pass
 
 
 async def down(db):
     pass
-'''
+"""
 
 
 def write_migration_file(migrations_dir: Path, name: str, content: str) -> Path:

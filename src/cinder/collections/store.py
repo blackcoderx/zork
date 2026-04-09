@@ -6,7 +6,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from cinder.collections.schema import Collection, BoolField, DateTimeField, FileField, JSONField
+from cinder.collections.schema import (
+    Collection,
+    BoolField,
+    DateTimeField,
+    FileField,
+    JSONField,
+)
 from cinder.db.backends.base import DatabaseIntegrityError
 from cinder.db.connection import Database
 from cinder.errors import CANCEL_DELETE_MESSAGE, CinderError
@@ -25,7 +31,6 @@ class CollectionStore:
         if not await self.db.table_exists(collection.name):
             sql = collection.build_create_table_sql()
             await self.db.execute(sql)
-            return
 
         existing_cols = await self.db.get_columns(collection.name)
         existing_names = {col["name"] for col in existing_cols}
@@ -46,6 +51,12 @@ class CollectionStore:
                     f"Column '{col_name}' exists in table '{collection.name}' "
                     f"but is not in the schema. It will NOT be dropped."
                 )
+
+        for sql in collection.build_index_sqls():
+            idx_name = sql.split()[5]
+            if not await self.db.index_exists(collection.name, idx_name):
+                await self.db.execute(sql)
+                logger.info("Created index %s on %s", idx_name, collection.name)
 
     async def create(
         self, collection: Collection, data: dict, ctx: CinderContext | None = None
@@ -70,7 +81,9 @@ class CollectionStore:
                 record[field.name] = datetime.now(timezone.utc).isoformat()
 
         for key, value in record.items():
-            if hasattr(value, "__str__") and not isinstance(value, (str, int, float, bool, type(None))):
+            if hasattr(value, "__str__") and not isinstance(
+                value, (str, int, float, bool, type(None))
+            ):
                 record[key] = str(value)
 
         now = datetime.now(timezone.utc).isoformat()
@@ -91,18 +104,14 @@ class CollectionStore:
             raise CinderError(400, str(exc)) from exc
 
         saved = self._deserialize(collection, record)
-        await collection._runner.run(
-            f"{collection.name}:after_create", saved, ctx
-        )
+        await collection._runner.run(f"{collection.name}:after_create", saved, ctx)
         return saved
 
     async def get(
         self, collection: Collection, id: str, ctx: CinderContext | None = None
     ) -> dict | None:
         ctx = ctx or CinderContext(collection=collection.name, operation="read")
-        id = await collection._runner.run(
-            f"{collection.name}:before_read", id, ctx
-        )
+        id = await collection._runner.run(f"{collection.name}:before_read", id, ctx)
         row = await self.db.fetch_one(
             f"SELECT * FROM {collection.name} WHERE id = ?", (id,)
         )
@@ -202,17 +211,27 @@ class CollectionStore:
 
         for field in collection.fields:
             if field.name in update_values:
-                if isinstance(field, BoolField) and update_values[field.name] is not None:
+                if (
+                    isinstance(field, BoolField)
+                    and update_values[field.name] is not None
+                ):
                     update_values[field.name] = int(update_values[field.name])
-                if isinstance(field, JSONField) and update_values[field.name] is not None:
+                if (
+                    isinstance(field, JSONField)
+                    and update_values[field.name] is not None
+                ):
                     update_values[field.name] = json.dumps(update_values[field.name])
                 if isinstance(field, FileField):
-                    update_values[field.name] = field.serialize(update_values[field.name])
+                    update_values[field.name] = field.serialize(
+                        update_values[field.name]
+                    )
             if isinstance(field, DateTimeField) and field.auto_now:
                 update_values[field.name] = datetime.now(timezone.utc).isoformat()
 
         for key, value in update_values.items():
-            if hasattr(value, "__str__") and not isinstance(value, (str, int, float, bool, type(None))):
+            if hasattr(value, "__str__") and not isinstance(
+                value, (str, int, float, bool, type(None))
+            ):
                 update_values[key] = str(value)
 
         update_values["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -251,12 +270,8 @@ class CollectionStore:
                 # report success to the caller.
                 return True
             raise
-        await self.db.execute(
-            f"DELETE FROM {collection.name} WHERE id = ?", (id,)
-        )
-        await collection._runner.run(
-            f"{collection.name}:after_delete", existing, ctx
-        )
+        await self.db.execute(f"DELETE FROM {collection.name} WHERE id = ?", (id,))
+        await collection._runner.run(f"{collection.name}:after_delete", existing, ctx)
         return True
 
     async def _raw_get(self, collection: Collection, id: str) -> dict | None:

@@ -51,3 +51,11 @@ class Database:
     async def get_columns(self, name: str) -> list[dict]:
         """Return column descriptors for the given table (each has a 'name' key)."""
         return await self._backend.get_columns(name)
+
+    async def get_indexes(self, table: str) -> list[str]:
+        """Return names of all indexes on `table` (excluding primary key)."""
+        return await self._backend.get_indexes(table)
+
+    async def index_exists(self, table: str, index_name: str) -> bool:
+        """Return True if the named index exists on `table`."""
+        return await self._backend.index_exists(table, index_name)

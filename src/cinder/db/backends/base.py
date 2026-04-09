@@ -51,3 +51,11 @@ class DatabaseBackend(ABC):
     @abstractmethod
     async def get_columns(self, name: str) -> list[dict]:
         """Return a list of column descriptors, each with at least a 'name' key."""
+
+    @abstractmethod
+    async def get_indexes(self, table: str) -> list[str]:
+        """Return names of all indexes on `table` (excluding primary key)."""
+
+    @abstractmethod
+    async def index_exists(self, table: str, index_name: str) -> bool:
+        """Return True if the named index exists on `table`."""
