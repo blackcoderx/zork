@@ -24,6 +24,7 @@ app.add_typer(migrate_app, name="migrate")
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _load_app(app_path: str):
     """Load a Cinder instance from a Python file.
 
@@ -61,6 +62,7 @@ def _load_app(app_path: str):
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
+
 
 @app.command()
 def serve(
@@ -160,8 +162,12 @@ def generate_secret():
 
 @app.command()
 def doctor(
-    app_path: Optional[str] = typer.Option(None, "--app", help="Path to the Python file containing the Cinder app"),
-    database: Optional[str] = typer.Option(None, "--database", help="Database URL to check"),
+    app_path: Optional[str] = typer.Option(
+        None, "--app", help="Path to the Python file containing the Cinder app"
+    ),
+    database: Optional[str] = typer.Option(
+        None, "--database", help="Database URL to check"
+    ),
 ):
     """Check connectivity to configured services."""
     from cinder.db.connection import Database
@@ -220,7 +226,11 @@ def doctor(
             redis_ok, redis_detail = asyncio.run(_check_redis(redis_url))
             if redis_ok:
                 redis_masked = re.sub(r"://([^:@]+):([^@]+)@", "://***:***@", redis_url)
-                redis_display = redis_masked if len(redis_masked) <= 40 else redis_masked[:40] + "..."
+                redis_display = (
+                    redis_masked
+                    if len(redis_masked) <= 40
+                    else redis_masked[:40] + "..."
+                )
                 typer.echo(f"[OK] Redis: {redis_display}")
             else:
                 typer.echo(f"[FAIL] Redis: {redis_detail}")
@@ -234,7 +244,9 @@ def doctor(
 
 @app.command()
 def routes(
-    app_path: str = typer.Option(..., "--app", help="Path to the Python file containing the Cinder app"),
+    app_path: str = typer.Option(
+        ..., "--app", help="Path to the Python file containing the Cinder app"
+    ),
 ):
     """List all registered routes."""
     from starlette.routing import Mount, Route, WebSocketRoute
@@ -273,7 +285,9 @@ def routes(
 
 @app.command()
 def info(
-    app_path: str = typer.Option(..., "--app", help="Path to the Python file containing the Cinder app"),
+    app_path: str = typer.Option(
+        ..., "--app", help="Path to the Python file containing the Cinder app"
+    ),
 ):
     """Show information about the Cinder application."""
     cinder_app, _ = _load_app(app_path)
@@ -292,11 +306,7 @@ def info(
     storage = getattr(cinder_app, "_storage_backend", None)
     broker = getattr(cinder_app, "_broker", None)
     auth_status = "enabled" if auth else "disabled"
-    storage_type = (
-        type(storage).__name__
-        if storage
-        else "not configured"
-    )
+    storage_type = type(storage).__name__ if storage else "not configured"
     broker_type = type(broker).__name__
 
     typer.echo(f"Title:            {cinder_app.title}")
@@ -304,7 +314,9 @@ def info(
     typer.echo(f"Python version:   {sys.version}")
     typer.echo(f"Cinder version:   {cinder_version}")
     typer.echo(f"Database:         {db_masked}")
-    typer.echo(f"Collections ({len(collections)}):  {', '.join(collections) if collections else '(none)'}")
+    typer.echo(
+        f"Collections ({len(collections)}):  {', '.join(collections) if collections else '(none)'}"
+    )
     typer.echo(f"Auth:             {auth_status}")
     typer.echo(f"Storage:          {storage_type}")
     typer.echo(f"Realtime broker:  {broker_type}")
@@ -313,6 +325,7 @@ def info(
 # ---------------------------------------------------------------------------
 # migrate sub-app
 # ---------------------------------------------------------------------------
+
 
 def _get_db_url_for_migrate(app_path: Optional[str]) -> tuple[str, object | None]:
     """Return (db_url, cinder_app_or_None) for migrate commands."""
@@ -354,8 +367,12 @@ def _migrate_run(app_path: Optional[str], migrations_dir: str) -> None:
 @migrate_app.callback(invoke_without_command=True)
 def migrate(
     ctx: typer.Context,
-    app_path: Optional[str] = typer.Option(None, "--app", help="Path to the Python file containing the Cinder app"),
-    migrations_dir: str = typer.Option("migrations", "--dir", help="Directory containing migration files"),
+    app_path: Optional[str] = typer.Option(
+        None, "--app", help="Path to the Python file containing the Cinder app"
+    ),
+    migrations_dir: str = typer.Option(
+        "migrations", "--dir", help="Directory containing migration files"
+    ),
 ):
     """Apply pending migrations (default action)."""
     if ctx.invoked_subcommand is None:
@@ -364,8 +381,12 @@ def migrate(
 
 @migrate_app.command("run")
 def migrate_run(
-    app_path: Optional[str] = typer.Option(None, "--app", help="Path to the Python file containing the Cinder app"),
-    migrations_dir: str = typer.Option("migrations", "--dir", help="Directory containing migration files"),
+    app_path: Optional[str] = typer.Option(
+        None, "--app", help="Path to the Python file containing the Cinder app"
+    ),
+    migrations_dir: str = typer.Option(
+        "migrations", "--dir", help="Directory containing migration files"
+    ),
 ):
     """Apply all pending migrations."""
     _migrate_run(app_path, migrations_dir)
@@ -373,8 +394,12 @@ def migrate_run(
 
 @migrate_app.command("status")
 def migrate_status(
-    app_path: Optional[str] = typer.Option(None, "--app", help="Path to the Python file containing the Cinder app"),
-    migrations_dir: str = typer.Option("migrations", "--dir", help="Directory containing migration files"),
+    app_path: Optional[str] = typer.Option(
+        None, "--app", help="Path to the Python file containing the Cinder app"
+    ),
+    migrations_dir: str = typer.Option(
+        "migrations", "--dir", help="Directory containing migration files"
+    ),
 ):
     """Show the status of all migrations."""
     from cinder.db.connection import Database
@@ -389,12 +414,16 @@ def migrate_status(
             engine = MigrationEngine(db, migrations_dir)
             rows = await engine.status()
             col_w = (40, 10, 30)
-            header = f"{'ID':<{col_w[0]}} {'Status':<{col_w[1]}} {'Applied At':<{col_w[2]}}"
+            header = (
+                f"{'ID':<{col_w[0]}} {'Status':<{col_w[1]}} {'Applied At':<{col_w[2]}}"
+            )
             typer.echo(header)
             typer.echo("-" * (sum(col_w) + 2))
             for row in rows:
                 applied_at = row["applied_at"] or "-"
-                typer.echo(f"{row['id']:<{col_w[0]}} {row['status']:<{col_w[1]}} {applied_at:<{col_w[2]}}")
+                typer.echo(
+                    f"{row['id']:<{col_w[0]}} {row['status']:<{col_w[1]}} {applied_at:<{col_w[2]}}"
+                )
         finally:
             await db.disconnect()
 
@@ -403,8 +432,12 @@ def migrate_status(
 
 @migrate_app.command("rollback")
 def migrate_rollback(
-    app_path: Optional[str] = typer.Option(None, "--app", help="Path to the Python file containing the Cinder app"),
-    migrations_dir: str = typer.Option("migrations", "--dir", help="Directory containing migration files"),
+    app_path: Optional[str] = typer.Option(
+        None, "--app", help="Path to the Python file containing the Cinder app"
+    ),
+    migrations_dir: str = typer.Option(
+        "migrations", "--dir", help="Directory containing migration files"
+    ),
 ):
     """Roll back the last applied migration."""
     from cinder.db.connection import Database
@@ -431,9 +464,15 @@ def migrate_rollback(
 @migrate_app.command("create")
 def migrate_create(
     name: str = typer.Argument(..., help="Name of the migration"),
-    app_path: Optional[str] = typer.Option(None, "--app", help="Path to the Python file containing the Cinder app"),
-    migrations_dir: str = typer.Option("migrations", "--dir", help="Directory containing migration files"),
-    auto: bool = typer.Option(False, "--auto", help="Auto-generate migration from schema diff"),
+    app_path: Optional[str] = typer.Option(
+        None, "--app", help="Path to the Python file containing the Cinder app"
+    ),
+    migrations_dir: str = typer.Option(
+        "migrations", "--dir", help="Directory containing migration files"
+    ),
+    auto: bool = typer.Option(
+        False, "--auto", help="Auto-generate migration from schema diff"
+    ),
 ):
     """Create a new migration file."""
     from cinder.migrations.generator import (
@@ -450,6 +489,7 @@ def migrate_create(
     # Auto mode: diff the schema
     from cinder.db.connection import Database
     from cinder.migrations.diff import SchemaComparator
+
     db_url, cinder_app = _get_db_url_for_migrate(app_path)
     if cinder_app is None:
         typer.echo("Error: --app is required for --auto", err=True)
