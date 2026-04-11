@@ -1,113 +1,172 @@
 ---
 title: WebSocket
-description: Use WebSocket for bidirectional realtime communication
+description: Real-time updates over a persistent WebSocket connection
+sidebar:
+  order: 2
 ---
 
-Connect to `/api/realtime/ws` and communicate via JSON messages.
+The WebSocket transport provides a persistent, bidirectional connection for receiving live events.
 
 ## Connecting
 
-```javascript
-const ws = new WebSocket("ws://localhost:8000/api/realtime/ws");
+```
+ws://localhost:8000/api/realtime
+wss://yourapp.com/api/realtime   (TLS in production)
 ```
 
-No token is required on connection. You can authenticate mid-session.
+## Authentication
 
-## Subscribe to a Channel
+You can authenticate in two ways:
 
-Send a `subscribe` action to start receiving events:
+### Option 1 — Query parameter (at connect time)
 
-```javascript
-ws.send(JSON.stringify({ action: "subscribe", "channel": "collection:posts" }));
+```
+ws://localhost:8000/api/realtime?token=eyJ...
 ```
 
-Cinder acknowledges with:
+The connection is rejected with close code `1008` if the token is invalid.
+
+### Option 2 — Auth message (mid-session)
+
+Send an `auth` action after connecting:
 
 ```json
-{ "type": "ack", "action": "subscribe", "channel": "collection:posts" }
+{ "action": "auth", "token": "eyJ..." }
 ```
 
-Subscribe to multiple channels by sending multiple `subscribe` messages.
-
-## Receiving Events
-
-Once subscribed, events arrive as JSON:
-
-```json
-{
-  "channel": "collection:posts",
-  "event": "create",
-  "record": { "id": "abc", "title": "My Post" },
-  "previous": null
-}
-```
-
-## Unsubscribe
-
-```javascript
-ws.send(JSON.stringify({ action: "unsubscribe", "channel": "collection:posts" }));
-```
-
-## Authenticating Mid-Session
-
-Send an `auth` message at any time:
-
-```javascript
-ws.send(JSON.stringify({ action: "auth", token: "eyJhbGciOi..." }));
-```
-
-Cinder responds with:
-
+**Success response:**
 ```json
 { "type": "ack", "action": "auth" }
 ```
 
-On success, your user identity is attached to the connection.
+**Failure response:**
+```json
+{ "type": "error", "message": "Invalid token" }
+```
 
-If the token is invalid, the connection is closed with a `4401` close code.
+Unauthenticated clients can still connect and will receive events for `read:public` collections.
 
-## Full Browser Example
+## Subscribing to channels
+
+After connecting (and optionally authenticating), subscribe to a channel:
+
+```json
+{ "action": "subscribe", "channel": "collection:posts" }
+```
+
+**Response:**
+```json
+{ "type": "ack", "action": "subscribe", "channel": "collection:posts" }
+```
+
+Subscribe to multiple collections by sending multiple subscribe messages.
+
+## Unsubscribing
+
+```json
+{ "action": "unsubscribe", "channel": "collection:posts" }
+```
+
+**Response:**
+```json
+{ "type": "ack", "action": "unsubscribe", "channel": "collection:posts" }
+```
+
+## Ping / pong
+
+Send a ping to check if the connection is alive:
+
+```json
+{ "action": "ping" }
+```
+
+**Response:**
+```json
+{ "type": "pong" }
+```
+
+The server also sends a `{ "type": "ping" }` frame every 30 seconds to keep the connection alive. No response is required from the client.
+
+## Receiving events
+
+Events arrive as JSON messages with `"type": "envelope"`:
+
+```json
+{
+  "type": "envelope",
+  "channel": "collection:posts",
+  "event": "create",
+  "collection": "posts",
+  "record": {
+    "id": "abc123",
+    "title": "Hello World",
+    "created_at": "2024-01-01T00:00:00+00:00"
+  },
+  "id": "abc123",
+  "ts": "2024-01-01T00:00:00+00:00"
+}
+```
+
+For `update` events, a `previous` key contains the record's state before the change:
+
+```json
+{
+  "type": "envelope",
+  "channel": "collection:posts",
+  "event": "update",
+  "collection": "posts",
+  "record": { "id": "...", "title": "Updated Title", ... },
+  "previous": { "id": "...", "title": "Old Title", ... },
+  "id": "...",
+  "ts": "..."
+}
+```
+
+## Event types
+
+| `event` value | Trigger |
+|---------------|---------|
+| `create` | A record was created (`POST`) |
+| `update` | A record was updated (`PATCH`) |
+| `delete` | A record was deleted (`DELETE`) |
+
+## Channel naming
+
+Built-in collection channels follow the pattern `collection:{name}`:
+
+- `collection:posts`
+- `collection:comments`
+
+Access control is applied automatically for built-in collection channels. Custom channel names are also supported but receive no access filtering by default.
+
+## Full JavaScript example
 
 ```javascript
-const ws = new WebSocket("ws://localhost:8000/api/realtime/ws");
+const ws = new WebSocket("ws://localhost:8000/api/realtime");
 
 ws.onopen = () => {
-  // Optionally authenticate first
-  ws.send(JSON.stringify({ action: "auth", token: localStorage.getItem("token") }));
-
-  // Subscribe to a collection channel
-  ws.send(JSON.stringify({ action: "subscribe", channel: "collection:posts" }));
+  // Authenticate
+  ws.send(JSON.stringify({ action: "auth", token: "eyJ..." }));
 };
 
-ws.onmessage = ({ data }) => {
-  const msg = JSON.parse(data);
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
 
-  if (msg.type === "ack") {
-    console.log("Acknowledged:", msg.action);
+  if (msg.type === "ack" && msg.action === "auth") {
+    // Authenticated — now subscribe to channels
+    ws.send(JSON.stringify({ action: "subscribe", channel: "collection:posts" }));
     return;
   }
 
-  if (msg.channel === "collection:posts") {
-    console.log(`Post ${msg.event}d:`, msg.record);
+  if (msg.type === "envelope") {
+    console.log(msg.event, msg.collection, msg.record);
+    // e.g. "create" "posts" { id: "...", title: "..." }
+  }
+
+  if (msg.type === "error") {
+    console.error("Error:", msg.message);
   }
 };
 
-ws.onclose = (event) => {
-  console.log("Disconnected:", event.code, event.reason);
-};
+ws.onclose = () => console.log("Disconnected");
 ```
-
-## Auth-Aware Filtering
-
-| Read rule | WebSocket behaviour |
-|-----------|----------------------|
-| `public` | All clients receive all events |
-| `authenticated` | Only authenticated clients receive events |
-| `admin` | Only clients with admin role receive events |
-| `owner` | Each client only receives events for records they created |
-
-## Next Steps
-
-- [SSE](/realtime/sse/) — Server-to-client streaming
-- [Custom Channels](/realtime/channels/) — Publish your own events
-- [Overview](/realtime/overview/) — Full realtime docs

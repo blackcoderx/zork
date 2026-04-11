@@ -1,92 +1,118 @@
 ---
 title: Server-Sent Events
-description: Use SSE for unidirectional server-to-client streaming
+description: Real-time updates over a standard HTTP SSE stream
+sidebar:
+  order: 3
 ---
 
-Connect to `/api/realtime/sse` with query parameters. The browser's native `EventSource` API works out of the box.
+Server-Sent Events (SSE) is a lightweight HTTP-based transport for receiving live updates. It is unidirectional (server → client) and proxy-friendly.
 
-## Subscribe
+## Connecting
 
 ```
 GET /api/realtime/sse?channel=collection:posts
-GET /api/realtime/sse?channel=collection:posts&channel=collection:comments
-GET /api/realtime/sse?token=eyJhbGciOi...&channel=collection:notes
 ```
 
-| Query param | Required | Description |
-|-------------|----------|-------------|
-| `channel` | Yes | One or more channel names (repeatable) |
-| `token` | Only for protected collections | JWT bearer token |
+**At least one `channel` parameter is required.** Without it you receive `400 Bad Request`.
 
-## SSE Frame Format
+Multiple channels:
 
-Each event is sent as a standard SSE frame:
+```
+GET /api/realtime/sse?channel=collection:posts&channel=collection:comments
+```
+
+With authentication:
+
+```
+GET /api/realtime/sse?token=eyJ...&channel=collection:posts
+```
+
+## Query parameters
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `channel` | Yes (at least one) | Channel to subscribe to. Repeatable. |
+| `token` | No | JWT token for authenticated collections. |
+
+## Channel naming
+
+Built-in collection channels follow the pattern `collection:{name}`:
+
+- `collection:posts`
+- `collection:users`
+
+Access control is automatically applied for built-in collection channels based on the collection's `read` rule.
+
+## Event format
+
+Events arrive as SSE named events. The `event` field in the SSE frame matches the action (`create`, `update`, `delete`):
 
 ```
 event: create
-data: {"channel":"collection:posts","event":"create","record":{...},"previous":null}
-id: <record-id>
+data: {"channel":"collection:posts","event":"create","collection":"posts","record":{"id":"...","title":"Hello"},"id":"...","ts":"..."}
+id: abc123
+
+event: update
+data: {"channel":"collection:posts","event":"update","collection":"posts","record":{"id":"...","title":"Updated"},"previous":{"id":"...","title":"Old"},"id":"...","ts":"..."}
+id: abc123
 ```
 
-A `: ping` comment is sent every 15 seconds to keep the connection alive.
+The `data` payload is the full envelope JSON:
 
-## Browser Example
+| Field | Description |
+|-------|-------------|
+| `channel` | Channel name (e.g. `collection:posts`) |
+| `event` | Action: `create`, `update`, or `delete` |
+| `collection` | Collection name |
+| `record` | The record in its current state |
+| `previous` | Previous state (only on `update` and `delete`) |
+| `id` | Record UUID |
+| `ts` | ISO 8601 timestamp of the event |
+
+## Heartbeat
+
+The server sends a comment ping every 15 seconds to keep proxies from timing out the connection:
+
+```
+: ping
+```
+
+This is ignored by the browser's `EventSource` API.
+
+## JavaScript example
 
 ```javascript
-const token = localStorage.getItem("token");
-const url = `/api/realtime/sse?token=${token}&channel=collection:posts`;
-const source = new EventSource(url);
+const source = new EventSource(
+  "http://localhost:8000/api/realtime/sse?token=eyJ...&channel=collection:posts"
+);
 
-source.addEventListener("create", (e) => {
-  const data = JSON.parse(e.data);
-  console.log("New post:", data.record);
+source.addEventListener("create", (event) => {
+  const envelope = JSON.parse(event.data);
+  console.log("New record:", envelope.record);
 });
 
-source.addEventListener("update", (e) => {
-  const data = JSON.parse(e.data);
-  console.log("Post updated:", data.record);
+source.addEventListener("update", (event) => {
+  const envelope = JSON.parse(event.data);
+  console.log("Updated:", envelope.record, "was:", envelope.previous);
 });
 
-source.addEventListener("delete", (e) => {
-  const data = JSON.parse(e.data);
-  console.log("Post deleted:", data.record.id);
+source.addEventListener("delete", (event) => {
+  const envelope = JSON.parse(event.data);
+  console.log("Deleted:", envelope.record.id);
 });
 
-source.onerror = () => {
-  console.error("SSE connection lost, browser will retry automatically");
-};
+source.onerror = () => console.error("SSE error");
 ```
 
-## Auth-Aware Filtering
+## SSE vs WebSocket
 
-| Read rule | SSE behaviour |
-|-----------|----------------|
-| `public` | All clients receive events |
-| `authenticated` | Only authenticated clients receive events |
-| `admin` | Only admin clients receive events |
-| `owner` | Each client only receives events for their records |
+| | SSE | WebSocket |
+|---|-----|-----------|
+| Protocol | HTTP | WS |
+| Direction | Server → Client | Bidirectional |
+| Subscribe at connect | Via query params | Via `subscribe` message |
+| Auto-reconnect | Yes (browser built-in) | Manual |
+| Proxy/firewall support | Excellent | Sometimes blocked |
+| Auth | `?token=` query param | Query param or `auth` message |
 
-Pass `?token=` in the query string to authenticate.
-
-## Configuration
-
-| Environment Variable | Default | Description |
-|---------------------|---------|-------------|
-| `CINDER_SSE_HEARTBEAT` | `15` | Seconds between ping comments |
-
-```sh
-CINDER_SSE_HEARTBEAT=30
-```
-
-## Why Use SSE?
-
-- **Simpler than WebSocket** — No connection management
-- **Works everywhere** — Native browser support
-- **One-way** — Server to client only
-- **Automatic reconnection** — Built into EventSource
-
-## Next Steps
-
-- [WebSocket](/realtime/websocket/) — Bidirectional communication
-- [Custom Channels](/realtime/channels/) — Publish your own events
-- [Overview](/realtime/overview/) — Full realtime docs
+Use SSE for dashboards and notification feeds. Use WebSocket if you need bidirectional communication or dynamic subscribe/unsubscribe after connecting.
