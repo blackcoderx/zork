@@ -1,9 +1,15 @@
 ---
 title: Quick Start
-description: Create your first Cinder app in under 5 minutes
+description: Build your first Cinder API in under 5 minutes
+sidebar:
+  order: 2
 ---
 
-Create a file called `main.py`:
+This guide walks you through creating a fully working REST API with authentication in a single Python file.
+
+## 1. Create your app file
+
+Create `main.py`:
 
 ```python
 from cinder import Cinder, Collection, TextField, IntField, Auth
@@ -20,95 +26,97 @@ auth = Auth(token_expiry=86400, allow_registration=True)
 
 app.register(posts, auth=["read:public", "write:authenticated"])
 app.use_auth(auth)
-app.serve()
 ```
 
-## Run the Server
+## 2. Start the server
 
 ```bash
 cinder serve main.py
-# Server running at http://localhost:8000
 ```
 
-## What You Get
+The server starts on `http://localhost:8000`.
 
-Your app now includes:
+For development with auto-reload:
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/auth/register` | POST | Register a new user |
-| `/api/auth/login` | POST | Login and get JWT token |
-| `/api/auth/me` | GET | Get current user info |
-| `/api/auth/logout` | POST | Revoke current token |
-| `/api/posts` | GET | List all posts |
-| `/api/posts` | POST | Create a new post |
-| `/api/posts/{id}` | GET | Get a single post |
-| `/api/posts/{id}` | PATCH | Update a post |
-| `/api/posts/{id}` | DELETE | Delete a post |
-| `/api/health` | GET | Health check |
-| `/openapi.json` | GET | OpenAPI 3.1 schema |
-| `/docs` | GET | Swagger UI |
+```bash
+cinder serve main.py --reload
+```
 
-## Try It Out
+## 3. What you get
 
-### Register a User
+Cinder auto-generates the following endpoints:
+
+**Auth**
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/auth/register` | Register a new user |
+| `POST` | `/api/auth/login` | Get a JWT token |
+| `GET` | `/api/auth/me` | Get the current user |
+| `POST` | `/api/auth/logout` | Revoke the current token |
+| `POST` | `/api/auth/refresh` | Issue a new token |
+
+**Posts**
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/posts` | List posts (public) |
+| `POST` | `/api/posts` | Create a post (auth required) |
+| `GET` | `/api/posts/{id}` | Get a single post |
+| `PATCH` | `/api/posts/{id}` | Update a post (auth required) |
+| `DELETE` | `/api/posts/{id}` | Delete a post (auth required) |
+
+**System**
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/health` | Health check |
+| `GET` | `/openapi.json` | OpenAPI 3.1 schema |
+| `GET` | `/docs` | Swagger UI |
+
+## 4. Try it out
+
+Register a user:
 
 ```bash
 curl -X POST http://localhost:8000/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email": "user@example.com", "password": "secure123", "username": "john"}'
+  -d '{"email": "alice@example.com", "password": "secret123"}'
 ```
 
-Response:
 ```json
 {
-  "token": "eyJhbGciOi...",
-  "user": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "email": "user@example.com",
-    "username": "john",
-    "role": "user"
-  }
+  "token": "eyJ...",
+  "user": { "id": "...", "email": "alice@example.com", "role": "user" }
 }
 ```
 
-### Create a Post (Authenticated)
+Create a post with the token:
 
 ```bash
 curl -X POST http://localhost:8000/api/posts \
+  -H "Authorization: Bearer eyJ..." \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer eyJhbGciOi..." \
-  -d '{"title": "Hello World", "body": "My first post!"}'
+  -d '{"title": "Hello Cinder", "body": "My first post"}'
 ```
 
-### List Posts (Public)
+List posts (no auth required):
 
 ```bash
 curl http://localhost:8000/api/posts
 ```
 
-Response:
 ```json
 {
   "items": [
-    {
-      "id": "...",
-      "title": "Hello World",
-      "body": "My first post!",
-      "views": 0,
-      "created_at": "2026-04-09T12:00:00",
-      "updated_at": "2026-04-09T12:00:00"
-    }
+    { "id": "...", "title": "Hello Cinder", "body": "My first post", "views": 0, "created_at": "...", "updated_at": "..." }
   ],
   "total": 1,
-  "limit": 20,
-  "offset": 0
+  "page": 1,
+  "per_page": 50
 }
 ```
 
-## Next Steps
+## 5. Next steps
 
-- [The Cinder App](/core-concepts/app/) — Understand the central registry
-- [Collections](/core-concepts/collections/) — Learn how to define data schemas
-- [Access Control](/core-concepts/access-control/) — Control who can access your data
-- [Field Types](/fields/field-types/) — Available field definitions
+- [Core Concepts](/core-concepts/app/) — understand how the `Cinder` app works
+- [Collections](/core-concepts/collections/) — define richer schemas
+- [Field Types](/fields/field-types/) — all available field types and options
+- [Access Control](/core-concepts/access-control/) — fine-grained permission rules
