@@ -94,6 +94,70 @@ app.configure_redis(url="redis://localhost:6379")
 
 See the [Redis Broker](/realtime/redis/) page for details.
 
+## Advanced: `app.realtime` API
+
+The `app.realtime` object exposes several methods for customising the realtime layer. All must be called **before** `app.build()` or `app.serve()`.
+
+### Publishing custom events
+
+Send an arbitrary event to any channel from a hook, background task, or anywhere in your code:
+
+```python
+@orders.on("after_create")
+async def notify(order, ctx):
+    await app.realtime.publish("order:new", {"order_id": order["id"]})
+```
+
+Custom channel names are accepted. Clients subscribed to that channel receive the event.
+
+### Disabling auto-emit for a collection
+
+By default, every CRUD operation on every collection is broadcast. To opt out for a specific collection (e.g. high-frequency audit logs):
+
+```python
+app.realtime.disable_auto_emit("audit_logs")
+app.realtime.enable_auto_emit("audit_logs")  # re-enable
+```
+
+### Disabling all auto-emit
+
+```python
+app.realtime.enabled = False  # no CRUD events are broadcast at all
+```
+
+### Custom envelope shape
+
+Override the envelope builder to change the structure of every broadcast event:
+
+```python
+def my_envelope(collection, event, record, *, previous=None):
+    return {
+        "channel": f"collection:{collection}",
+        "event": event,
+        "collection": collection,
+        "record": record,
+        "previous": previous,
+        "id": record.get("id"),
+        "ts": "...",
+        # add your own fields here
+        "app_version": "2.0",
+    }
+
+app.realtime.envelope_builder = my_envelope
+```
+
+### Custom WebSocket routes
+
+Register additional WebSocket routes alongside the built-in `/api/realtime`:
+
+```python
+async def my_chat_handler(websocket):
+    await websocket.accept()
+    # custom protocol ...
+
+app.realtime.add_websocket_route("/api/chat", my_chat_handler)
+```
+
 ## In this section
 
 - [WebSocket](/realtime/websocket/) — full WebSocket protocol reference
