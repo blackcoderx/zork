@@ -52,7 +52,7 @@ By default the API returns the raw ID:
 { "id": "...", "body": "Great post!", "author": "user-uuid" }
 ```
 
-Add `?expand=field` to inline the full related record:
+Add `?expand=field` to fetch the full related record. The expanded data is placed in a nested `expand` key — the original ID field remains unchanged:
 
 ```
 GET /api/comments?expand=author
@@ -64,9 +64,12 @@ GET /api/comments?expand=author
     {
       "id": "...",
       "body": "Great post!",
-      "author": {
-        "id": "user-uuid",
-        "name": "Alice"
+      "author": "user-uuid",
+      "expand": {
+        "author": {
+          "id": "user-uuid",
+          "name": "Alice"
+        }
       }
     }
   ]
