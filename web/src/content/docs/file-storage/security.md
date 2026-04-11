@@ -1,92 +1,79 @@
 ---
 title: Security
-description: File upload security features and best practices
+description: Access control for file upload and download routes
+sidebar:
+  order: 3
 ---
 
-Cinder enforces several protections on every file upload.
+## Download access
 
-## MIME Type Validation
+By default, file download routes respect the collection's access control rules:
 
-Cinder checks both the `Content-Type` header and the file's magic bytes (first 512 bytes):
+- If the collection uses `read:owner`, only the record's owner can download files from it
+- If the collection uses `read:authenticated`, any authenticated user can download
+- If the collection uses `read:public`, anyone can download
 
-```python
-FileField("avatar", allowed_types=["image/*"])
-```
+### Public files
 
-If a file claims to be `image/jpeg` but contains a PDF binary, it's rejected with `422`.
-
-## Size Enforcement
-
-Streaming read with a byte counter. The connection is aborted mid-stream if `max_size` is exceeded:
+Set `public=True` on a `FileField` to skip authentication entirely for that field's download route:
 
 ```python
-FileField("attachment", max_size=5_000_000)  # 5 MB limit
+FileField("avatar", public=True)
+FileField("cover_image", public=True)
 ```
 
-Returns `413 Payload Too Large` if exceeded.
+Use this for assets you intentionally want publicly accessible (profile pictures, cover images, product photos).
 
-## Path Traversal Prevention
+### Private files
 
-Storage keys are always formatted as:
+Without `public=True`, the download route requires a valid JWT token. Ownership rules are enforced the same way as for regular collection reads.
 
-```
-{collection}/{id}/{field}/{uuid}_{sanitized_name}
-```
+## Upload access
 
-The user-supplied filename is sanitized (alphanumeric, `-`, `_`, `.` only) and prefixed with a UUID. User input never controls the storage path directly.
+Upload routes follow the collection's `write` rules:
 
-## Authentication Gating
+- `write:authenticated` — any authenticated user can upload
+- `write:owner` — only the record owner can upload to their own record
+- `write:admin` — only admins can upload
 
-- **Upload** — always requires write permission
-- **Delete** — always requires write permission
-- **Download** — requires read permission, unless `FileField(public=True)` is set
+## File type validation
 
-## Signed URL Expiry
-
-Presigned download URLs expire after 15 minutes by default (configurable via `signed_url_expires`):
+Cinder validates MIME types on upload using the `allowed_types` option:
 
 ```python
-S3CompatibleBackend(
-    bucket="my-bucket",
-    signed_url_expires=1800,  # 30 minutes
-)
+FileField("doc", allowed_types=["application/pdf", "application/msword"])
+FileField("image", allowed_types=["image/*"])
+FileField("any", allowed_types=["*/*"])   # no restriction (default)
 ```
 
-The URL is generated fresh per request and never stored.
+Pattern matching:
+- `"image/*"` matches `image/jpeg`, `image/png`, `image/webp`, etc.
+- `"application/pdf"` matches only that exact MIME type
+- `"*/*"` matches everything
 
-## Best Practices
+## File size limits
 
-### Use Allowed Types
-
-```python
-# Images only
-FileField("photos", multiple=True, allowed_types=["image/*"])
-
-# Documents only
-FileField("documents", allowed_types=["application/pdf", "application/msword"])
-```
-
-### Set Size Limits
+Set `max_size` in bytes:
 
 ```python
-# Profile photos - small
-FileField("avatar", max_size=1_000_000)  # 1 MB
-
-# Large files - be generous but bounded
+FileField("avatar", max_size=2_000_000)   # 2 MB
 FileField("video", max_size=100_000_000)  # 100 MB
 ```
 
-### Use Public for Static Assets
+Files exceeding the limit are rejected with `413 Payload Too Large`.
 
-```python
-# Profile pictures - public read
-FileField("avatar", public=True)
+## Keys and filenames
 
-# Private documents - authenticated read
-FileField("contract", public=False)
+Cinder generates a unique, sanitised storage key for each uploaded file:
+
+```
+{collection}/{record_id}/{field_name}/{uuid}.{ext}
 ```
 
-## Next Steps
+For example: `posts/abc123/cover/f1e2d3c4.jpg`
 
-- [Setup](/file-storage/setup/) — FileField basics
-- [Backends](/file-storage/backends/) — Storage configuration
+The original filename is stored in the metadata but is not used as the storage key. This prevents path traversal and filename collision issues.
+
+## Orphan cleanup
+
+When a record containing file fields is deleted, Cinder automatically deletes the associated files from the storage backend through `after_delete` hooks. No manual cleanup is required.
