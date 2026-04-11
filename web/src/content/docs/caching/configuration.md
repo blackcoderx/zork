@@ -1,185 +1,103 @@
 ---
-title: Cache Configuration
-description: All cache configuration options
+title: Configuration
+description: Configure caching backends and options
+sidebar:
+  order: 2
 ---
 
-## Programmatic Configuration
+## Backends
 
-### Enable Cache
-
-```python
-from cinder import Cinder
-
-app = Cinder(database="app.db")
-
-# Enable with in-memory backend (default)
-app.cache.enable()
-
-# Disable cache entirely
-app.cache.enable(False)
-```
-
-### Use Backend
+### Redis (recommended for production)
 
 ```python
-from cinder import Cinder
-from cinder.cache import RedisCacheBackend, MemoryCacheBackend
+from cinder.cache.backends import RedisCacheBackend
 
-app = Cinder(database="app.db")
-
-# Use Redis backend
 app.cache.use(RedisCacheBackend())
+```
 
-# Or use memory backend explicitly
+Requires `pip install "cinder[redis]"`. Reads the Redis URL from `CINDER_REDIS_URL` automatically.
+
+Custom URL:
+
+```python
+app.cache.use(RedisCacheBackend(prefix="myapp"))
+app.configure_redis(url="redis://localhost:6379")
+```
+
+### In-memory (development / single process)
+
+```python
+from cinder.cache.backends import MemoryCacheBackend
+
 app.cache.use(MemoryCacheBackend())
+app.cache.enable()
 ```
 
-### Configure Options
+The in-memory cache is a simple dict. It is not shared across processes and is cleared on restart. Suitable for development and testing only.
+
+## Fluent configuration API
 
 ```python
-app.cache.configure(
-    default_ttl=600,    # Cache TTL in seconds
-    per_user=True,      # Separate cache per user
-)
+app.cache \
+    .use(RedisCacheBackend()) \
+    .configure(default_ttl=300, per_user=True) \
+    .exclude("/api/health", "/api/docs")
 ```
 
-### Exclude Paths
+### `.use(backend)`
+
+Plug in a cache backend. Must be called before `app.build()` or `app.serve()`.
+
+### `.configure(default_ttl, per_user)`
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `default_ttl` | `int` | `300` | Seconds before cached entries expire |
+| `per_user` | `bool` | `True` | Cache responses separately per user. Ensures `read:owner` rules are respected. |
+
+Also configurable via environment variable:
+
+```dotenv
+CINDER_CACHE_TTL=600
+```
+
+### `.exclude(*paths)`
+
+Never cache responses for these path prefixes:
 
 ```python
-app.cache.exclude(
-    "/api/feed",
-    "/api/search",
-    "/api/notifications",
-)
+app.cache.exclude("/api/admin", "/api/realtime")
 ```
 
-## Configuration Options
+### `.enable(value=True)`
 
-| Method | Parameters | Default | Description |
-|--------|------------|---------|-------------|
-| `enable()` | `value=True` | Enabled when Redis configured | Enable/disable caching |
-| `use()` | `backend` | Auto (Redis or Memory) | Set cache backend |
-| `configure()` | `default_ttl`, `per_user` | 300s, True | Set cache options |
-| `exclude()` | `*paths` | None | Paths to never cache |
-
-### default_ttl
-
-Time-to-live for cache entries in seconds:
+Force caching on or off regardless of whether Redis is configured:
 
 ```python
-app.cache.configure(default_ttl=600)  # 10 minutes
+app.cache.enable(True)    # always on
+app.cache.enable(False)   # always off
 ```
 
-### per_user
+Also configurable via:
 
-Separate cache entries per user:
-
-```python
-# Default: True (safer, prevents data leaks)
-app.cache.configure(per_user=True)
-
-# Faster, but only for fully public data
-app.cache.configure(per_user=False)
-```
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CINDER_CACHE_ENABLED` | `auto` | `true`/`false`/`auto` |
-| `CINDER_CACHE_TTL` | `300` | Default TTL in seconds |
-| `CINDER_CACHE_PREFIX` | `cinder` | Redis key prefix |
-
-### CINDER_CACHE_ENABLED
-
-```bash
-# Auto (enable if Redis configured)
-CINDER_CACHE_ENABLED=auto
-
-# Force enable
+```dotenv
 CINDER_CACHE_ENABLED=true
-
-# Disable entirely
 CINDER_CACHE_ENABLED=false
 ```
 
-### CINDER_CACHE_TTL
+## Cache key prefix
 
-```bash
-# 5 minutes (default)
-CINDER_CACHE_TTL=300
+When using Redis, all cache keys are prefixed to avoid collisions with other applications:
 
-# 1 hour
-CINDER_CACHE_TTL=3600
+```dotenv
+CINDER_CACHE_PREFIX=myapp   # default: "cinder"
 ```
 
-### CINDER_CACHE_PREFIX
+## Auto-detection
 
-```bash
-# Custom prefix for Redis keys
-CINDER_CACHE_PREFIX=myapp
-```
+If you don't explicitly call `.use()`, Cinder picks the backend automatically:
 
-## Complete Example
+1. If `CINDER_REDIS_URL` is set → `RedisCacheBackend`
+2. Otherwise → `MemoryCacheBackend`
 
-```python
-from cinder import Cinder
-from cinder.cache import RedisCacheBackend
-
-app = Cinder(database="app.db")
-
-# Configure Redis (enables Redis backend)
-app.configure_redis(url="redis://localhost:6379/0")
-
-# Fine-tune cache settings
-app.cache.configure(
-    default_ttl=600,    # 10 minutes
-    per_user=True,       # Separate cache per user
-)
-
-# Exclude volatile endpoints
-app.cache.exclude(
-    "/api/feed",
-    "/api/search",
-    "/api/realtime",
-)
-
-# Register collections
-app.register(posts)
-app.register(comments)
-
-# Start server
-app.serve()
-```
-
-## Backend Auto-Detection
-
-| Configuration | Backend Used |
-|---------------|--------------|
-| No Redis configured | `MemoryCacheBackend` |
-| `CINDER_REDIS_URL` set | `RedisCacheBackend` |
-| `app.cache.use(backend)` | Custom backend |
-| `app.configure_redis()` | `RedisCacheBackend` |
-
-## Combining Options
-
-```python
-# All options combined
-app = Cinder(database="app.db")
-app.configure_redis(url="redis://localhost:6379/0")
-
-app.cache.configure(
-    default_ttl=300,
-    per_user=True,
-)
-app.cache.exclude("/api/volatile")
-
-# Same as above, but with env vars
-# CINDER_REDIS_URL=redis://localhost:6379/0
-# CINDER_CACHE_TTL=300
-```
-
-## Next Steps
-
-- [Cache-Aside](/caching/cache-aside/) — How caching works
-- [Cache Invalidation](/caching/invalidation/) — Automatic invalidation
+Caching is only activated if `CINDER_REDIS_URL` is set or you call `.enable()` explicitly.
