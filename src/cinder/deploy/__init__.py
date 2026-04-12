@@ -1,0 +1,1 @@
+"""Cinder deployment configuration generator."""
