@@ -42,28 +42,28 @@
 	   ========================================================================
 	   For light mode, the accent-low is lighter and accent-high is darker
 	   to maintain contrast on light backgrounds. */
-    --sl-color-accent-low: #ffe0c2; /* Light orange - light backgrounds */
-    --sl-color-accent: #f47b20; /* Main orange - keep consistent */
-    --sl-color-accent-high: #8b4200; /* Dark orange - dark text on light */
+    --sl-color-accent-low: #fde8d4; /* Light orange tint - hover states */
+    --sl-color-accent: #c45e0a; /* Deeper orange - better contrast on light */
+    --sl-color-accent-high: #7a3800; /* Dark orange - dark text on light */
 
-    --sl-color-white: #121212; /* Near black - headings */
-    --sl-color-gray-1: #2d2d2d; /* Dark - primary text */
-    --sl-color-gray-2: #4f4f4f; /* Medium dark - secondary text */
-    --sl-color-gray-3: #8e8e8e; /* Medium gray - muted text */
-    --sl-color-gray-4: #c1c1c1; /* Light gray - borders */
-    --sl-color-gray-5: #eeeeee; /* Very light gray - subtle surfaces */
-    --sl-color-gray-6: #ffffff; /* White - cards, elevated surfaces */
-    --sl-color-black: #ffffff; /* White - main background */
+    --sl-color-white: #1a1a1a; /* Near black - headings */
+    --sl-color-gray-1: #1e1e1e; /* Near black - primary text */
+    --sl-color-gray-2: #3a3a3a; /* Dark charcoal - body text */
+    --sl-color-gray-3: #6b6b6b; /* Medium gray - muted/secondary text */
+    --sl-color-gray-4: #b0a89e; /* Warm gray - borders, dividers */
+    --sl-color-gray-5: #ddd7cf; /* Warm light gray - elevated surfaces, cards */
+    --sl-color-gray-6: #ede8e1; /* Warm off-white - sidebar, nav bg */
+    --sl-color-black: #f5f0eb; /* Warm off-white - main page background */
 
     /* ========================================================================
 	   BACKGROUND & TEXT COLORS
 	   ========================================================================
 	   Remapped for light mode readability. */
-    --sl-color-bg: var(--sl-color-black); /* Main background - white */
-    --sl-color-bg-nav: var(--sl-color-gray-6); /* Navigation - white */
-    --sl-color-text: var(--sl-color-gray-1); /* Body text - dark */
-    --sl-color-text-accent: var(--sl-color-accent); /* Links - orange */
-    --sl-color-heading: var(--sl-color-white);
+    --sl-color-bg: var(--sl-color-black); /* Main background - warm off-white */
+    --sl-color-bg-nav: var(--sl-color-gray-6); /* Navigation - slightly darker */
+    --sl-color-text: var(--sl-color-gray-2); /* Body text - dark charcoal */
+    --sl-color-text-accent: var(--sl-color-accent); /* Links - deeper orange */
+    --sl-color-heading: var(--sl-color-white); /* Headings - near black */
     --sl-border-radius: 4px; /* Keep consistent */
 }
 
