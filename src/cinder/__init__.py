@@ -2,6 +2,8 @@
 
 from dotenv import load_dotenv
 
+load_dotenv()
+
 from cinder.app import Cinder
 from cinder.auth import Auth
 from cinder.cache.backends import CacheBackend, MemoryCacheBackend, RedisCacheBackend
@@ -24,8 +26,6 @@ from cinder.ratelimit.backends import (
     RedisRateLimitBackend,
 )
 from cinder.ratelimit.middleware import RateLimitRule
-
-load_dotenv()
 
 
 __all__ = [
