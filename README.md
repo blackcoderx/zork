@@ -1,4 +1,4 @@
-# Cinder API
+# CinderAPI
 
 [![PyPI version](https://img.shields.io/pypi/v/cinder?color=f47b20&label=cinder&style=flat-square)](https://pypi.org/project/cinder/)
 [![Python](https://img.shields.io/pypi/pyversions/cinder?color=3572A5&style=flat-square)](https://pypi.org/project/cinder/)
