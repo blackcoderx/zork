@@ -80,6 +80,7 @@ You now have:
 - Rate limiting per route
 - Email delivery with SMTP and provider presets
 - Schema migrations via CLI
+- One-command deployment — generate Docker, Railway, Render, and Fly.io configs with `cinder deploy`
 - Auto-generated OpenAPI 3.1 + Swagger UI
 - Zero boilerplate — one file to a working API
 
