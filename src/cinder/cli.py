@@ -11,6 +11,9 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = typer.Typer(
     name="cinder", help="Cinder — A lightweight backend framework for Python."
@@ -252,7 +255,22 @@ def routes(
     from starlette.routing import Mount, Route, WebSocketRoute
 
     cinder_app, _ = _load_app(app_path)
-    starlette_app = cinder_app.build()
+    built = cinder_app.build()
+
+    # build() returns a LazyInitMiddleware wrapping the middleware stack.
+    # Walk inward to find the Starlette app that has .routes.
+    from starlette.applications import Starlette
+
+    starlette_app = built
+    while starlette_app is not None and not isinstance(starlette_app, Starlette):
+        # Middleware wrappers store the inner app in .app or ._inner
+        starlette_app = getattr(starlette_app, "app", None) or getattr(
+            starlette_app, "_inner", None
+        )
+
+    if starlette_app is None or not hasattr(starlette_app, "routes"):
+        typer.echo("Error: Could not resolve routes from the built app.", err=True)
+        raise typer.Exit(1)
 
     collected: list[tuple[str, str, str]] = []
 
@@ -510,3 +528,106 @@ def migrate_create(
             await db.disconnect()
 
     asyncio.run(_auto_create())
+
+
+# ---------------------------------------------------------------------------
+# Deploy
+# ---------------------------------------------------------------------------
+
+SUPPORTED_PLATFORMS = ("docker", "railway", "render", "fly")
+
+
+def _detect_platform() -> str:
+    """Auto-detect the deployment platform from environment variables."""
+    if os.getenv("RAILWAY_ENVIRONMENT"):
+        return "railway"
+    if os.getenv("RENDER"):
+        return "render"
+    if os.getenv("FLY_APP_NAME"):
+        return "fly"
+    return "docker"
+
+
+@app.command()
+def deploy(
+    platform: Optional[str] = typer.Option(
+        None, "--platform", "-p",
+        help=f"Target platform: {', '.join(SUPPORTED_PLATFORMS)}",
+    ),
+    app_path: str = typer.Option("main.py", "--app", help="Path to Cinder app file"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview files without writing"),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing files"),
+):
+    """Generate deployment configuration files for your Cinder app."""
+    from cinder.deploy.config import generate_cinder_toml
+    from cinder.deploy.introspect import introspect
+    from cinder.deploy.platforms import PLATFORMS
+
+    # Resolve platform
+    chosen = platform or _detect_platform()
+    if chosen not in PLATFORMS:
+        typer.echo(
+            f"Error: Unknown platform '{chosen}'. Choose from: {', '.join(SUPPORTED_PLATFORMS)}",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    # Introspect the app
+    path = Path(app_path).resolve()
+    if not path.exists():
+        typer.echo(f"Error: File not found: {app_path}", err=True)
+        raise typer.Exit(1)
+
+    try:
+        profile = introspect(app_path)
+    except RuntimeError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+
+    # Warn about SQLite on PaaS
+    if profile.needs_sqlite and chosen != "docker":
+        typer.echo(
+            "Warning: SQLite is not recommended for production on cloud platforms. "
+            "Consider switching to PostgreSQL.",
+            err=True,
+        )
+
+    # Generate platform files
+    output_dir = path.parent
+    generator = PLATFORMS[chosen](profile, output_dir)
+    files = generator.generate()
+
+    # Also generate cinder.toml
+    files.append(
+        type(files[0])("cinder.toml", generate_cinder_toml(profile, chosen))
+    )
+
+    if dry_run:
+        for f in files:
+            typer.echo(f"\n{'=' * 60}")
+            typer.echo(f"  {f.path}")
+            typer.echo(f"{'=' * 60}")
+            typer.echo(f.content)
+        typer.echo(f"\n{len(files)} file(s) would be generated.")
+        return
+
+    # Write files
+    written = 0
+    for f in files:
+        dest = output_dir / f.path
+        if dest.exists() and not force:
+            overwrite = typer.confirm(f"  {f.path} already exists. Overwrite?")
+            if not overwrite:
+                typer.echo(f"  Skipped: {f.path}")
+                continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(f.content, encoding="utf-8")
+        typer.echo(f"  Created: {f.path}")
+        written += 1
+
+    typer.echo(f"\n{written} file(s) generated for {chosen}.")
+
+    # Show post-generation instructions if available
+    if hasattr(generator, "post_generate_instructions"):
+        typer.echo("")
+        typer.echo(generator.post_generate_instructions())
