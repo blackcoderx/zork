@@ -135,6 +135,29 @@ Realtime broker:  RealtimeBroker
 
 ---
 
+## `cinder deploy`
+
+Generate deployment configuration files for your app. See [Deployment](/deployment/) for full documentation.
+
+```bash
+cinder deploy --platform docker
+cinder deploy --platform railway --app main.py
+cinder deploy --platform render --dry-run
+cinder deploy --platform fly --force
+cinder deploy  # auto-detects platform from environment
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--platform`, `-p` | auto-detect | Target platform: `docker`, `railway`, `render`, `fly` |
+| `--app` | `main.py` | Path to the file containing the `Cinder` instance |
+| `--dry-run` | `false` | Print generated files without writing them |
+| `--force` | `false` | Overwrite existing files without prompting |
+
+Platform auto-detection reads `RAILWAY_ENVIRONMENT`, `RENDER`, and `FLY_APP_NAME` from the environment. Defaults to `docker` if none are set.
+
+---
+
 ## `cinder migrate`
 
 Apply pending migrations. See [Migrations](/migrations/commands/) for full documentation.
