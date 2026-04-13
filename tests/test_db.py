@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from cinder.db.connection import Database
+from zeno.db.connection import Database
 
 
 @pytest.fixture
@@ -100,16 +100,16 @@ async def test_get_columns_empty_after_no_table(db):
 # ---------------------------------------------------------------------------
 
 def test_resolve_backend_bare_path():
-    from cinder.db.backends import resolve_backend
-    from cinder.db.backends.sqlite import SQLiteBackend
+    from zeno.db.backends import resolve_backend
+    from zeno.db.backends.sqlite import SQLiteBackend
 
     b = resolve_backend("app.db")
     assert isinstance(b, SQLiteBackend)
 
 
 def test_resolve_backend_sqlite_url():
-    from cinder.db.backends import resolve_backend
-    from cinder.db.backends.sqlite import SQLiteBackend
+    from zeno.db.backends import resolve_backend
+    from zeno.db.backends.sqlite import SQLiteBackend
 
     b = resolve_backend("sqlite:///data/app.db")
     assert isinstance(b, SQLiteBackend)
@@ -117,32 +117,32 @@ def test_resolve_backend_sqlite_url():
 
 
 def test_resolve_backend_postgres():
-    from cinder.db.backends import resolve_backend
-    from cinder.db.backends.postgresql import PostgreSQLBackend
+    from zeno.db.backends import resolve_backend
+    from zeno.db.backends.postgresql import PostgreSQLBackend
 
     b = resolve_backend("postgresql://user:pass@localhost/db")
     assert isinstance(b, PostgreSQLBackend)
 
 
 def test_resolve_backend_postgres_alias():
-    from cinder.db.backends import resolve_backend
-    from cinder.db.backends.postgresql import PostgreSQLBackend
+    from zeno.db.backends import resolve_backend
+    from zeno.db.backends.postgresql import PostgreSQLBackend
 
     b = resolve_backend("postgres://user:pass@localhost/db")
     assert isinstance(b, PostgreSQLBackend)
 
 
 def test_resolve_backend_mysql():
-    from cinder.db.backends import resolve_backend
-    from cinder.db.backends.mysql import MySQLBackend
+    from zeno.db.backends import resolve_backend
+    from zeno.db.backends.mysql import MySQLBackend
 
     b = resolve_backend("mysql://user:pass@localhost/db")
     assert isinstance(b, MySQLBackend)
 
 
 def test_resolve_backend_mysql_aiomysql_scheme():
-    from cinder.db.backends import resolve_backend
-    from cinder.db.backends.mysql import MySQLBackend
+    from zeno.db.backends import resolve_backend
+    from zeno.db.backends.mysql import MySQLBackend
 
     b = resolve_backend("mysql+aiomysql://user:pass@localhost/db")
     assert isinstance(b, MySQLBackend)
@@ -152,12 +152,12 @@ def test_resolve_backend_mysql_aiomysql_scheme():
 # resolve_backend — env-var priority chain
 # ---------------------------------------------------------------------------
 
-def test_resolve_backend_env_cinder_database_url_overrides(monkeypatch):
-    """CINDER_DATABASE_URL takes highest priority over all other sources."""
-    from cinder.db.backends import resolve_backend
-    from cinder.db.backends.sqlite import SQLiteBackend
+def test_resolve_backend_env_zeno_database_url_overrides(monkeypatch):
+    """ZENO_DATABASE_URL takes highest priority over all other sources."""
+    from zeno.db.backends import resolve_backend
+    from zeno.db.backends.sqlite import SQLiteBackend
 
-    monkeypatch.setenv("CINDER_DATABASE_URL", "sqlite:///override.db")
+    monkeypatch.setenv("ZENO_DATABASE_URL", "sqlite:///override.db")
     monkeypatch.delenv("DATABASE_URL", raising=False)
 
     b = resolve_backend("postgresql://user:pass@localhost/db")  # ignored
@@ -165,12 +165,12 @@ def test_resolve_backend_env_cinder_database_url_overrides(monkeypatch):
     assert b._path == "override.db"
 
 
-def test_resolve_backend_env_database_url_used_when_no_cinder_url(monkeypatch):
-    """DATABASE_URL is used when CINDER_DATABASE_URL is not set."""
-    from cinder.db.backends import resolve_backend
-    from cinder.db.backends.sqlite import SQLiteBackend
+def test_resolve_backend_env_database_url_used_when_no_zeno_url(monkeypatch):
+    """DATABASE_URL is used when ZENO_DATABASE_URL is not set."""
+    from zeno.db.backends import resolve_backend
+    from zeno.db.backends.sqlite import SQLiteBackend
 
-    monkeypatch.delenv("CINDER_DATABASE_URL", raising=False)
+    monkeypatch.delenv("ZENO_DATABASE_URL", raising=False)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///from_env.db")
 
     b = resolve_backend("app.db")  # ignored
@@ -180,10 +180,10 @@ def test_resolve_backend_env_database_url_used_when_no_cinder_url(monkeypatch):
 
 def test_resolve_backend_programmatic_value_used_when_no_env(monkeypatch):
     """Programmatic URL is used when no env vars are set."""
-    from cinder.db.backends import resolve_backend
-    from cinder.db.backends.sqlite import SQLiteBackend
+    from zeno.db.backends import resolve_backend
+    from zeno.db.backends.sqlite import SQLiteBackend
 
-    monkeypatch.delenv("CINDER_DATABASE_URL", raising=False)
+    monkeypatch.delenv("ZENO_DATABASE_URL", raising=False)
     monkeypatch.delenv("DATABASE_URL", raising=False)
 
     b = resolve_backend("sqlite:///programmatic.db")
@@ -191,13 +191,13 @@ def test_resolve_backend_programmatic_value_used_when_no_env(monkeypatch):
     assert b._path == "programmatic.db"
 
 
-def test_resolve_backend_cinder_url_beats_database_url(monkeypatch):
-    """CINDER_DATABASE_URL beats DATABASE_URL when both are set."""
-    from cinder.db.backends import resolve_backend
-    from cinder.db.backends.postgresql import PostgreSQLBackend
-    from cinder.db.backends.sqlite import SQLiteBackend
+def test_resolve_backend_zeno_url_beats_database_url(monkeypatch):
+    """ZENO_DATABASE_URL beats DATABASE_URL when both are set."""
+    from zeno.db.backends import resolve_backend
+    from zeno.db.backends.postgresql import PostgreSQLBackend
+    from zeno.db.backends.sqlite import SQLiteBackend
 
-    monkeypatch.setenv("CINDER_DATABASE_URL", "postgresql://a:b@host/prod")
+    monkeypatch.setenv("ZENO_DATABASE_URL", "postgresql://a:b@host/prod")
     monkeypatch.setenv("DATABASE_URL", "sqlite:///dev.db")
 
     b = resolve_backend("app.db")  # ignored
@@ -210,7 +210,7 @@ def test_resolve_backend_cinder_url_beats_database_url(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_integrity_error_raised_on_unique_violation(db):
-    from cinder.db.backends.base import DatabaseIntegrityError
+    from zeno.db.backends.base import DatabaseIntegrityError
 
     await db.execute("CREATE TABLE uniq (id TEXT PRIMARY KEY)")
     await db.execute("INSERT INTO uniq (id) VALUES (?)", ("dup",))

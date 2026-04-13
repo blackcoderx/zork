@@ -15,12 +15,12 @@ import json
 import pytest
 from starlette.testclient import TestClient
 
-from cinder.app import Cinder
-from cinder.collections.schema import Collection, TextField
-from cinder.collections.store import CollectionStore
-from cinder.db.connection import Database
-from cinder.realtime.auth_filter import filter_for_rule
-from cinder.realtime.broker import RealtimeBroker
+from zeno.app import Zeno
+from zeno.collections.schema import Collection, TextField
+from zeno.collections.store import CollectionStore
+from zeno.db.connection import Database
+from zeno.realtime.auth_filter import filter_for_rule
+from zeno.realtime.broker import RealtimeBroker
 
 
 # =============================================================================
@@ -30,8 +30,8 @@ from cinder.realtime.broker import RealtimeBroker
 
 @pytest.fixture
 def realtime_app(db_path):
-    """A minimal Cinder app with a public-read 'posts' collection and realtime."""
-    app = Cinder(database=db_path)
+    """A minimal Zeno app with a public-read 'posts' collection and realtime."""
+    app = Zeno(database=db_path)
     posts = Collection("posts", fields=[TextField("title", required=True)])
     app.register(posts, auth=["read:public", "write:public"])
     return app
@@ -40,10 +40,10 @@ def realtime_app(db_path):
 @pytest.fixture
 def owner_app(db_path):
     """App with an owner-rule 'notes' collection."""
-    app = Cinder(database=db_path)
+    app = Zeno(database=db_path)
     notes = Collection("notes", fields=[TextField("body", required=True)])
     app.register(notes, auth=["read:owner", "write:owner"])
-    from cinder.auth import Auth
+    from zeno.auth import Auth
     app.use_auth(Auth())
     return app
 
@@ -193,7 +193,7 @@ def test_filter_owner_matches_created_by():
 @pytest.fixture
 async def bridge_setup(db_path):
     """App with auto-emit wired; yields (app, built_app, store, posts)."""
-    app = Cinder(database=db_path)
+    app = Zeno(database=db_path)
     posts = Collection("posts", fields=[TextField("title", required=True)])
     app.register(posts, auth=["read:public", "write:public"])
     built = app.build()
@@ -248,7 +248,7 @@ async def test_bridge_delete_publishes_delete_event(bridge_setup):
 
 @pytest.mark.asyncio
 async def test_bridge_disable_auto_emit(db_path):
-    app = Cinder(database=db_path)
+    app = Zeno(database=db_path)
     posts = Collection("posts", fields=[TextField("title", required=True)])
     app.register(posts, auth=["read:public", "write:public"])
     app.realtime.disable_auto_emit("posts")
@@ -266,7 +266,7 @@ async def test_bridge_disable_auto_emit(db_path):
 
 @pytest.mark.asyncio
 async def test_bridge_custom_envelope_builder(db_path):
-    app = Cinder(database=db_path)
+    app = Zeno(database=db_path)
     posts = Collection("posts", fields=[TextField("title", required=True)])
     app.register(posts, auth=["read:public", "write:public"])
 
@@ -347,7 +347,7 @@ def test_ws_unknown_action_returns_error(realtime_app):
 
 def test_ws_end_to_end_create_event(db_path):
     """Subscribe via WS, create record via HTTP, assert event received over WS."""
-    app = Cinder(database=db_path)
+    app = Zeno(database=db_path)
     posts = Collection("posts", fields=[TextField("title", required=True)])
     app.register(posts, auth=["read:public", "write:public"])
     built = app.build()
@@ -372,7 +372,7 @@ def test_ws_custom_channel(db_path):
     """Publish a custom event via app.realtime.publish → received over WS."""
     import threading
 
-    app = Cinder(database=db_path)
+    app = Zeno(database=db_path)
     built = app.build()
 
     with TestClient(built) as client:
@@ -424,9 +424,9 @@ def test_sse_public_collection_no_token_not_required(db_path):
     This test verifies that the per-channel auth filter built for a public
     collection passes envelopes for anonymous (user=None) callers.
     """
-    from cinder.realtime.sse import _build_filter
+    from zeno.realtime.sse import _build_filter
 
-    app = Cinder(database=db_path)
+    app = Zeno(database=db_path)
     posts = Collection("posts", fields=[TextField("title", required=True)])
     app.register(posts, auth=["read:public", "write:public"])
     app.build()  # populates app.realtime._collections
@@ -449,10 +449,10 @@ def test_sse_end_to_end_create_event(db_path, monkeypatch):
     """
     import threading
     import asyncio
-    import cinder.realtime.sse as sse_module
+    import zeno.realtime.sse as sse_module
     monkeypatch.setattr(sse_module, "HEARTBEAT_INTERVAL", 2)  # cap max wait at 2s
 
-    app = Cinder(database=db_path)
+    app = Zeno(database=db_path)
     posts = Collection("posts", fields=[TextField("title", required=True)])
     app.register(posts, auth=["read:public", "write:public"])
     built = app.build()
@@ -527,7 +527,7 @@ def test_sse_end_to_end_create_event(db_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_realtime_publish_custom_envelope():
-    app = Cinder(database=":memory:")
+    app = Zeno(database=":memory:")
     sub = await app.realtime.broker.subscribe(["custom:channel"])
     await app.realtime.publish("custom:channel", {"hello": "world"}, event="greet")
     env = await asyncio.wait_for(sub.get(), timeout=1)
@@ -540,7 +540,7 @@ async def test_realtime_publish_custom_envelope():
 @pytest.mark.asyncio
 async def test_realtime_publish_passthrough_if_already_envelope():
     """If payload already has a 'channel' key it is published as-is."""
-    app = Cinder(database=":memory:")
+    app = Zeno(database=":memory:")
     sub = await app.realtime.broker.subscribe(["my:ch"])
     pre_built = {"channel": "my:ch", "event": "custom", "data": 42}
     await app.realtime.publish("my:ch", pre_built)

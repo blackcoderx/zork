@@ -1,9 +1,9 @@
 import re
 import pytest
 from datetime import datetime, timezone
-from cinder.collections.schema import Collection, TextField, IntField
-from cinder.migrations.diff import AddTable, AddColumn, DropColumn
-from cinder.migrations.generator import (
+from zeno.collections.schema import Collection, TextField, IntField
+from zeno.migrations.diff import AddTable, AddColumn, DropColumn
+from zeno.migrations.generator import (
     generate_migration_id,
     generate_migration_content,
     write_migration_file,

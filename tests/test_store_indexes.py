@@ -1,6 +1,6 @@
 import pytest
-from cinder.collections.schema import Collection, TextField
-from cinder.collections.store import CollectionStore
+from zeno.collections.schema import Collection, TextField
+from zeno.collections.store import CollectionStore
 
 
 class TestStoreIndexes:

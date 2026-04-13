@@ -3,11 +3,11 @@ from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from cinder.auth import Auth
-from cinder.auth.models import create_auth_tables
-from cinder.auth.routes import build_auth_routes
-from cinder.db.connection import Database
-from cinder.pipeline import build_middleware_stack
+from zeno.auth import Auth
+from zeno.auth.models import create_auth_tables
+from zeno.auth.routes import build_auth_routes
+from zeno.db.connection import Database
+from zeno.pipeline import build_middleware_stack
 
 
 SECRET = "test-secret-for-auth-tests"

@@ -1,10 +1,10 @@
 """Tests for tag-based cache invalidation."""
 import pytest
-from cinder.cache.backends import MemoryCacheBackend
-from cinder.cache.invalidation import install_invalidation, _list_tag, _get_key
-from cinder.hooks.registry import HookRegistry
-from cinder.hooks.runner import HookRunner
-from cinder.hooks.context import CinderContext
+from zeno.cache.backends import MemoryCacheBackend
+from zeno.cache.invalidation import install_invalidation, _list_tag, _get_key
+from zeno.hooks.registry import HookRegistry
+from zeno.hooks.runner import HookRunner
+from zeno.hooks.context import ZenoContext
 
 
 @pytest.fixture
@@ -26,7 +26,7 @@ async def test_after_create_invalidates_list(setup):
     await backend.set(key, b"cached")
     await backend.sadd(_list_tag("posts"), key)
 
-    ctx = CinderContext.system()
+    ctx = ZenoContext.system()
     await runner.fire("posts:after_create", {"id": 1}, ctx)
 
     # List key should be gone
@@ -44,7 +44,7 @@ async def test_after_update_invalidates_list_and_get(setup):
     await backend.set(get_key, b"get")
     await backend.sadd(_list_tag("posts"), list_key)
 
-    ctx = CinderContext.system()
+    ctx = ZenoContext.system()
     await runner.fire("posts:after_update", {"id": 42}, ctx)
 
     assert await backend.get(list_key) is None
@@ -61,7 +61,7 @@ async def test_after_delete_invalidates_list_and_get(setup):
     await backend.set(get_key, b"g")
     await backend.sadd(_list_tag("posts"), list_key)
 
-    ctx = CinderContext.system()
+    ctx = ZenoContext.system()
     await runner.fire("posts:after_delete", {"id": 7}, ctx)
 
     assert await backend.get(list_key) is None
@@ -79,7 +79,7 @@ async def test_invalidation_does_not_affect_other_collections(setup):
     await backend.sadd(_list_tag("posts"), posts_key)
     await backend.sadd(_list_tag("tags"), tags_key)
 
-    ctx = CinderContext.system()
+    ctx = ZenoContext.system()
     await runner.fire("posts:after_create", {"id": 1}, ctx)
 
     assert await backend.get(posts_key) is None
@@ -95,6 +95,6 @@ async def test_invalidation_backend_error_does_not_raise(setup, monkeypatch):
 
     monkeypatch.setattr(backend, "smembers", boom)
 
-    ctx = CinderContext.system()
+    ctx = ZenoContext.system()
     # Should not propagate the exception
     await runner.fire("posts:after_create", {"id": 1}, ctx)

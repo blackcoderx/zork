@@ -1,7 +1,7 @@
 """Tests for rate-limit backends."""
 import asyncio
 import pytest
-from cinder.ratelimit.backends import MemoryRateLimitBackend
+from zeno.ratelimit.backends import MemoryRateLimitBackend
 
 
 class TestMemoryRateLimitBackend:

@@ -2,22 +2,26 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from cinder.auth import Auth
-from cinder.auth.models import (
-    USERS_TABLE, block_token, is_blocked, PASSWORD_RESETS_TABLE,
-    EMAIL_VERIFICATIONS_TABLE, create_verification_token,
+from zeno.auth import Auth
+from zeno.auth.models import (
+    EMAIL_VERIFICATIONS_TABLE,
+    PASSWORD_RESETS_TABLE,
+    USERS_TABLE,
+    block_token,
+    create_verification_token,
+    is_blocked,
 )
-from cinder.auth.passwords import hash_password, verify_password
-from cinder.auth.tokens import create_token, decode_token
-from cinder.db.connection import Database
-from cinder.errors import CinderError
-from cinder.hooks.context import CinderContext
+from zeno.auth.passwords import hash_password, verify_password
+from zeno.auth.tokens import create_token, decode_token
+from zeno.db.connection import Database
+from zeno.errors import CinderError
+from zeno.hooks.context import CinderContext
 
 
 def _user_response(user: dict) -> dict:
@@ -44,7 +48,9 @@ async def _get_current_user(request: Request, db: Database, secret: str):
     return dict(user), payload
 
 
-def build_auth_routes(auth: Auth, db: Database, secret: str, email_config=None) -> list[Route]:  # noqa: ANN001
+def build_auth_routes(
+    auth: Auth, db: Database, secret: str, email_config=None
+) -> list[Route]:  # noqa: ANN001
     runner = auth._runner
 
     async def register(request: Request) -> JSONResponse:
@@ -78,7 +84,16 @@ def build_auth_routes(auth: Auth, db: Database, secret: str, email_config=None) 
         user_id = str(uuid.uuid4())
         hashed = hash_password(password)
 
-        columns = ["id", "email", "password", "is_verified", "is_active", "role", "created_at", "updated_at"]
+        columns = [
+            "id",
+            "email",
+            "password",
+            "is_verified",
+            "is_active",
+            "role",
+            "created_at",
+            "updated_at",
+        ]
         values = [user_id, email, hashed, 0, 1, "user", now, now]
 
         if username:
@@ -108,6 +123,7 @@ def build_auth_routes(auth: Auth, db: Database, secret: str, email_config=None) 
         if email_config is not None:
             from cinder.email.backends import EmailMessage
             from cinder.email.templates import email_verification_email
+
             ver_token = await create_verification_token(db, user_id, email)
             verify_url = (
                 f"{email_config._base_url}/api/auth/verify-email?token={ver_token}"
@@ -202,22 +218,29 @@ def build_auth_routes(auth: Auth, db: Database, secret: str, email_config=None) 
             )
             if email_config is not None:
                 from cinder.email.backends import EmailMessage
+
                 reset_url = (
                     f"{email_config._base_url}/reset-password?token={reset_token}"
                 )
                 subject, html, text = email_config._render_password_reset(reset_url)
                 await email_config.send(
-                    EmailMessage(to=email, subject=subject, html_body=html, text_body=text)
+                    EmailMessage(
+                        to=email, subject=subject, html_body=html, text_body=text
+                    )
                 )
             else:
                 logging.getLogger("cinder.auth").info(
                     "Password reset token for %s: %s", email, reset_token
                 )
-            await runner.run("auth:after_password_reset", {"email": email, "user_id": user["id"]}, ctx)
+            await runner.run(
+                "auth:after_password_reset",
+                {"email": email, "user_id": user["id"]},
+                ctx,
+            )
 
-        return JSONResponse({
-            "message": "If the email exists, a reset link has been generated"
-        })
+        return JSONResponse(
+            {"message": "If the email exists, a reset link has been generated"}
+        )
 
     async def reset_password(request: Request) -> JSONResponse:
         body = await request.json()

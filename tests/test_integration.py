@@ -1,17 +1,17 @@
-"""End-to-end integration test matching the example from the Cinder spec."""
+"""End-to-end integration test matching the example from the Zeno spec."""
 import pytest
 from starlette.testclient import TestClient
 
-from cinder.app import Cinder
-from cinder.auth import Auth
-from cinder.collections.schema import (
+from zeno.app import Zeno
+from zeno.auth import Auth
+from zeno.collections.schema import (
     Collection, TextField, IntField, FloatField, RelationField, BoolField,
 )
 
 
 @pytest.fixture
 def e2e_app(db_path):
-    app = Cinder(database=db_path)
+    app = Zeno(database=db_path)
 
     categories = Collection("categories", fields=[
         TextField("name", required=True),

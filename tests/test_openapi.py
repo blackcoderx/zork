@@ -1,8 +1,8 @@
 import pytest
 from starlette.testclient import TestClient
 
-from cinder.app import Cinder
-from cinder.collections.schema import (
+from zeno.app import Zeno
+from zeno.collections.schema import (
     BoolField,
     Collection,
     DateTimeField,
@@ -11,14 +11,14 @@ from cinder.collections.schema import (
     IntField,
     TextField,
 )
-from cinder.auth import Auth
-from cinder.openapi import CinderOpenAPI
-from cinder.storage.backends import LocalFileBackend
+from zeno.auth import Auth
+from zeno.openapi import ZenoOpenAPI
+from zeno.storage.backends import LocalFileBackend
 
 
 @pytest.fixture
 def app(db_path):
-    cinder = Cinder(
+    zeno = Zeno(
         database=db_path,
         title="Test API",
         version="2.0.0",
@@ -35,13 +35,13 @@ def app(db_path):
             DateTimeField("published_at"),
         ],
     )
-    cinder.register(posts, auth=["read:public", "write:public"])
-    return cinder
+    zeno.register(posts, auth=["read:public", "write:public"])
+    return zeno
 
 
 @pytest.fixture
 def app_with_file_field(db_path, tmp_path):
-    cinder = Cinder(
+    zeno = Zeno(
         database=db_path,
         title="Test API with Files",
         version="2.0.0",
@@ -54,14 +54,14 @@ def app_with_file_field(db_path, tmp_path):
             FileField("cover"),
         ],
     )
-    cinder.configure_storage(LocalFileBackend(str(tmp_path / "uploads")))
-    cinder.register(posts, auth=["read:public", "write:public"])
-    return cinder
+    zeno.configure_storage(LocalFileBackend(str(tmp_path / "uploads")))
+    zeno.register(posts, auth=["read:public", "write:public"])
+    return zeno
 
 
 @pytest.fixture
 def app_with_auth(db_path):
-    cinder = Cinder(
+    zeno = Zeno(
         database=db_path,
         title="Auth API",
         version="1.0.0",
@@ -75,20 +75,20 @@ def app_with_auth(db_path):
     )
     auth = Auth(token_expiry=3600, allow_registration=True)
 
-    cinder.register(posts, auth=["read:authenticated", "write:authenticated"])
-    cinder.use_auth(auth)
-    return cinder
+    zeno.register(posts, auth=["read:authenticated", "write:authenticated"])
+    zeno.use_auth(auth)
+    return zeno
 
 
 @pytest.fixture
 def app_no_auth(db_path):
-    cinder = Cinder(database=db_path)
+    zeno = Zeno(database=db_path)
     posts = Collection("posts", fields=[TextField("title", required=True)])
-    cinder.register(posts, auth=["read:public", "write:public"])
-    return cinder
+    zeno.register(posts, auth=["read:public", "write:public"])
+    return zeno
 
 
-class TestCinderOpenAPI:
+class TestZenoOpenAPI:
     def test_openapi_endpoint_returns_json(self, app):
         starlette_app = app.build()
         client = TestClient(starlette_app)
@@ -264,17 +264,17 @@ class TestCinderOpenAPI:
         assert "PostsUpdateRequest" in schemas
 
     def test_default_title_and_version(self, db_path):
-        cinder = Cinder(database=db_path)
+        zeno = Zeno(database=db_path)
         posts = Collection("posts", fields=[TextField("title")])
-        cinder.register(posts)
+        zeno.register(posts)
 
-        starlette_app = cinder.build()
+        starlette_app = zeno.build()
         client = TestClient(starlette_app)
 
         resp = client.get("/openapi.json")
         data = resp.json()
 
-        assert data["info"]["title"] == "Cinder API"
+        assert data["info"]["title"] == "Zeno API"
         assert data["info"]["version"] == "1.0.0"
 
     def test_schema_with_int_constraints(self, app):
@@ -318,7 +318,7 @@ class TestCinderOpenAPI:
         assert "offset" in list_schema["properties"]
 
 
-class TestCinderOpenAPIStandalone:
+class TestZenoOpenAPIStandalone:
     def test_standalone_openapi_generator(self):
         posts = Collection(
             "posts",
@@ -330,7 +330,7 @@ class TestCinderOpenAPIStandalone:
 
         collections = {"posts": (posts, {"read": "public", "write": "public"})}
 
-        openapi = CinderOpenAPI(
+        openapi = ZenoOpenAPI(
             title="My API",
             version="3.0.0",
             collections=collections,
@@ -348,7 +348,7 @@ class TestCinderOpenAPIStandalone:
         posts = Collection("posts", fields=[TextField("title")])
         collections = {"posts": (posts, {"read": "public", "write": "public"})}
 
-        openapi = CinderOpenAPI(
+        openapi = ZenoOpenAPI(
             title="Public API",
             version="1.0.0",
             collections=collections,

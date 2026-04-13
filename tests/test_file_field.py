@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from cinder.collections.schema import FileField
+from zeno.collections.schema import FileField
 
 
 class TestFileField:

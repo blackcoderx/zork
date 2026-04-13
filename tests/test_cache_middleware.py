@@ -7,8 +7,8 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from cinder.cache.backends import MemoryCacheBackend
-from cinder.cache.middleware import CacheMiddleware
+from zeno.cache.backends import MemoryCacheBackend
+from zeno.cache.middleware import CacheMiddleware
 
 
 def build_app(backend, excluded_paths=None, per_user=True):

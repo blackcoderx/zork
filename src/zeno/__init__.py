@@ -1,13 +1,13 @@
-"""Cinder — A lightweight backend framework for Python."""
+"""Zeno — A lightweight backend framework for Python."""
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from cinder.app import Cinder
-from cinder.auth import Auth
-from cinder.cache.backends import CacheBackend, MemoryCacheBackend, RedisCacheBackend
-from cinder.collections.schema import (
+from zeno.app import Zeno
+from zeno.auth import Auth
+from zeno.cache.backends import CacheBackend, MemoryCacheBackend, RedisCacheBackend
+from zeno.collections.schema import (
     BoolField,
     Collection,
     DateTimeField,
@@ -19,17 +19,17 @@ from cinder.collections.schema import (
     TextField,
     URLField,
 )
-from cinder.errors import CinderError
-from cinder.ratelimit.backends import (
+from zeno.errors import ZenoError
+from zeno.ratelimit.backends import (
     MemoryRateLimitBackend,
     RateLimitBackend,
     RedisRateLimitBackend,
 )
-from cinder.ratelimit.middleware import RateLimitRule
+from zeno.ratelimit.middleware import RateLimitRule
 
 
 __all__ = [
-    "Cinder",
+    "Zeno",
     "Auth",
     "Collection",
     "Field",
@@ -41,7 +41,7 @@ __all__ = [
     "URLField",
     "JSONField",
     "RelationField",
-    "CinderError",
+    "ZenoError",
     # Cache
     "CacheBackend",
     "MemoryCacheBackend",

@@ -18,16 +18,16 @@ import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
-from cinder.auth import Auth
-from cinder.auth.models import (
+from zeno.auth import Auth
+from zeno.auth.models import (
     EMAIL_VERIFICATIONS_TABLE,
     USERS_TABLE,
     create_auth_tables,
     create_verification_token,
 )
-from cinder.auth.routes import build_auth_routes
-from cinder.db.connection import Database
-from cinder.pipeline import build_middleware_stack
+from zeno.auth.routes import build_auth_routes
+from zeno.db.connection import Database
+from zeno.pipeline import build_middleware_stack
 
 SECRET = "test-secret-email-verification"
 
@@ -39,7 +39,7 @@ SECRET = "test-secret-email-verification"
 
 def _make_email_config(send_mock=None):
     """Create a minimal _EmailConfig-like object for testing."""
-    from cinder.app import _EmailConfig
+    from zeno.app import _EmailConfig
 
     cfg = _EmailConfig()
     cfg.configure(
@@ -113,7 +113,7 @@ class TestNoEmailConfig:
             "email": "reset@example.com", "password": "pass123",
         })
 
-        with caplog.at_level(logging.INFO, logger="cinder.auth"):
+        with caplog.at_level(logging.INFO, logger="zeno.auth"):
             resp = client.post("/api/auth/forgot-password", json={"email": "reset@example.com"})
 
         assert resp.status_code == 200

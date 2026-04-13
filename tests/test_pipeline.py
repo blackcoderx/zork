@@ -5,8 +5,8 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from cinder.errors import CinderError
-from cinder.pipeline import build_middleware_stack
+from zeno.errors import ZenoError
+from zeno.pipeline import build_middleware_stack
 
 
 async def ok_endpoint(request: Request):
@@ -14,7 +14,7 @@ async def ok_endpoint(request: Request):
 
 
 async def error_endpoint(request: Request):
-    raise CinderError(400, "Validation failed")
+    raise ZenoError(400, "Validation failed")
 
 
 async def unhandled_error_endpoint(request: Request):
@@ -28,7 +28,7 @@ def create_test_app(routes):
 
 
 class TestErrorHandler:
-    def test_cinder_error_returns_json(self):
+    def test_zeno_error_returns_json(self):
         app = create_test_app([Route("/err", error_endpoint)])
         client = TestClient(app, raise_server_exceptions=False)
         resp = client.get("/err")

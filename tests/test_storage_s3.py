@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from cinder.storage.s3 import S3CompatibleBackend
+from zeno.storage.s3 import S3CompatibleBackend
 
 
 class TestS3CompatibleBackendPresets:

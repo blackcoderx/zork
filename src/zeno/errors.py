@@ -1,8 +1,8 @@
 CANCEL_DELETE_MESSAGE = "__cancel_delete__"
 
 
-class CinderError(Exception):
-    """Base exception for Cinder framework errors.
+class ZenoError(Exception):
+    """Base exception for Zeno framework errors.
 
     Raised in hooks or routes to return a structured JSON error response.
     Caught by ErrorHandlerMiddleware in the pipeline.
@@ -14,7 +14,7 @@ class CinderError(Exception):
         super().__init__(message)
 
     @classmethod
-    def cancel_delete(cls) -> "CinderError":
+    def cancel_delete(cls) -> "ZenoError":
         """Sentinel error used in before_delete hooks to cancel the delete
         after handling it manually (e.g. soft delete)."""
         return cls(200, CANCEL_DELETE_MESSAGE)

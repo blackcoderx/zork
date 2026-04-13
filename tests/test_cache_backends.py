@@ -1,7 +1,7 @@
 """Tests for cache backends: MemoryCacheBackend and RedisCacheBackend."""
 import asyncio
 import pytest
-from cinder.cache.backends import MemoryCacheBackend, RedisCacheBackend
+from zeno.cache.backends import MemoryCacheBackend, RedisCacheBackend
 
 
 # ---------------------------------------------------------------------------

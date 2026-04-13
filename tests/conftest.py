@@ -10,7 +10,7 @@ def db_path(tmp_path):
 @pytest.fixture
 async def mem_db():
     """In-memory SQLite database for unit tests."""
-    from cinder.db.connection import Database
+    from zeno.db.connection import Database
     db = Database(":memory:")
     await db.connect()
     yield db

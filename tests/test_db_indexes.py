@@ -1,5 +1,5 @@
 import pytest
-from cinder.collections.schema import Collection, TextField
+from zeno.collections.schema import Collection, TextField
 
 
 class TestDbIndexes:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 from typing import Any
 
-from cinder.hooks.registry import HookRegistry
+from zeno.hooks.registry import HookRegistry
 
 
 class HookRunner:

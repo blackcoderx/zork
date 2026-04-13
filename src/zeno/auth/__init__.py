@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from cinder.collections.schema import Field
-from cinder.hooks.registry import HookRegistry
-from cinder.hooks.runner import HookRunner
+from zeno.collections.schema import Field
+from zeno.hooks.registry import HookRegistry
+from zeno.hooks.runner import HookRunner
 
 
 class Auth:
@@ -38,9 +38,11 @@ class Auth:
         """
         full = f"auth:{event}"
         if handler is None:
+
             def decorator(fn: Callable) -> Callable:
                 self._registry.on(full, fn)
                 return fn
+
             return decorator
         self._registry.on(full, handler)
         return handler

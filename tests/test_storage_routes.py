@@ -7,16 +7,16 @@ import json
 import pytest
 from starlette.testclient import TestClient
 
-from cinder.app import Cinder
-from cinder.auth import Auth
-from cinder.collections.schema import Collection, TextField, FileField
-from cinder.storage.backends import LocalFileBackend
+from zeno.app import Zeno
+from zeno.auth import Auth
+from zeno.collections.schema import Collection, TextField, FileField
+from zeno.storage.backends import LocalFileBackend
 
 
 @pytest.fixture
 def app_with_files(db_path, tmp_path):
-    """A Cinder app with a Posts collection that has a FileField."""
-    app = Cinder(database=db_path)
+    """A Zeno app with a Posts collection that has a FileField."""
+    app = Zeno(database=db_path)
 
     posts = Collection("posts", fields=[
         TextField("title", required=True),
@@ -286,7 +286,7 @@ class TestCleanup:
 
 class TestBuildValidation:
     def test_build_fails_without_storage_backend(self, db_path):
-        app = Cinder(database=db_path)
+        app = Zeno(database=db_path)
         posts = Collection("posts", fields=[
             TextField("title"),
             FileField("cover"),

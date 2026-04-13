@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from cinder.storage.backends import LocalFileBackend
+from zeno.storage.backends import LocalFileBackend
 
 
 class TestLocalFileBackend:

@@ -2,13 +2,13 @@ import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
-from cinder.collections.schema import (
+from zeno.collections.schema import (
     Collection, TextField, IntField, FloatField, RelationField,
 )
-from cinder.collections.store import CollectionStore
-from cinder.collections.router import build_collection_routes
-from cinder.db.connection import Database
-from cinder.pipeline import build_middleware_stack
+from zeno.collections.store import CollectionStore
+from zeno.collections.router import build_collection_routes
+from zeno.db.connection import Database
+from zeno.pipeline import build_middleware_stack
 
 
 @pytest.fixture

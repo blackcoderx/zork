@@ -1,39 +1,39 @@
 import pytest
 from starlette.testclient import TestClient
 
-from cinder.app import Cinder
-from cinder.collections.schema import Collection, TextField, IntField
-from cinder.auth import Auth
+from zeno.app import Zeno
+from zeno.collections.schema import Collection, TextField, IntField
+from zeno.auth import Auth
 
 
 @pytest.fixture
 def app(db_path):
-    cinder = Cinder(database=db_path)
+    zeno = Zeno(database=db_path)
 
     posts = Collection("posts", fields=[
         TextField("title", required=True),
         TextField("body"),
         IntField("views", default=0),
     ])
-    cinder.register(posts, auth=["read:public", "write:public"])
-    return cinder
+    zeno.register(posts, auth=["read:public", "write:public"])
+    return zeno
 
 
 @pytest.fixture
 def app_with_auth(db_path):
-    cinder = Cinder(database=db_path)
+    zeno = Zeno(database=db_path)
 
     posts = Collection("posts", fields=[
         TextField("title", required=True),
     ])
     auth = Auth(token_expiry=3600, allow_registration=True)
 
-    cinder.register(posts, auth=["read:public", "write:authenticated"])
-    cinder.use_auth(auth)
-    return cinder
+    zeno.register(posts, auth=["read:public", "write:authenticated"])
+    zeno.use_auth(auth)
+    return zeno
 
 
-class TestCinderApp:
+class TestZenoApp:
     def test_build_creates_working_app(self, app):
         starlette_app = app.build()
         client = TestClient(starlette_app)
@@ -56,7 +56,7 @@ class TestCinderApp:
         assert resp.json() == {"status": "ok"}
 
 
-class TestCinderWithAuth:
+class TestZenoWithAuth:
     def test_auth_routes_available(self, app_with_auth):
         starlette_app = app_with_auth.build()
         client = TestClient(starlette_app)

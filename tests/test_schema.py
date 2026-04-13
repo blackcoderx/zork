@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime
-from cinder.collections.schema import (
+from zeno.collections.schema import (
     Field, TextField, IntField, FloatField, BoolField,
     DateTimeField, URLField, JSONField, RelationField, Collection,
 )

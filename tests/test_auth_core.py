@@ -1,7 +1,7 @@
 import pytest
-from cinder.auth.passwords import hash_password, verify_password
-from cinder.auth.tokens import create_token, decode_token
-from cinder.errors import CinderError
+from zeno.auth.passwords import hash_password, verify_password
+from zeno.auth.tokens import create_token, decode_token
+from zeno.errors import ZenoError
 
 
 class TestPasswordHashing:
@@ -34,18 +34,18 @@ class TestJWT:
 
     def test_expired_token_raises(self):
         token = create_token("user-123", "user", -1, self.SECRET)
-        with pytest.raises(CinderError) as exc_info:
+        with pytest.raises(ZenoError) as exc_info:
             decode_token(token, self.SECRET)
         assert exc_info.value.status_code == 401
 
     def test_invalid_token_raises(self):
-        with pytest.raises(CinderError) as exc_info:
+        with pytest.raises(ZenoError) as exc_info:
             decode_token("garbage.token.here", self.SECRET)
         assert exc_info.value.status_code == 401
 
     def test_wrong_secret_raises(self):
         token = create_token("user-123", "user", 3600, self.SECRET)
-        with pytest.raises(CinderError):
+        with pytest.raises(ZenoError):
             decode_token(token, "wrong-secret")
 
     def test_tokens_have_unique_jti(self):

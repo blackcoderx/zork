@@ -7,8 +7,8 @@ import asyncio
 import json
 import pytest
 
-from cinder.realtime.broker import BrokerProtocol, RealtimeBroker, Subscription
-from cinder.realtime.redis_broker import RedisBroker
+from zeno.realtime.broker import BrokerProtocol, RealtimeBroker, Subscription
+from zeno.realtime.redis_broker import RedisBroker
 
 
 # ---------------------------------------------------------------------------
@@ -43,8 +43,8 @@ def broker(fake_redis, monkeypatch):
     async def _get_client():
         return fake_redis
 
-    monkeypatch.setattr("cinder.cache.redis_client.get_client", _get_client)
-    monkeypatch.setattr("cinder.realtime.redis_broker.RedisBroker._redis", lambda self: _get_client())
+    monkeypatch.setattr("zeno.cache.redis_client.get_client", _get_client)
+    monkeypatch.setattr("zeno.realtime.redis_broker.RedisBroker._redis", lambda self: _get_client())
     b = RedisBroker()
     return b
 

@@ -1,6 +1,6 @@
 import pytest
-from cinder.collections.schema import Collection, TextField, IntField
-from cinder.migrations.diff import SchemaComparator, AddTable, AddColumn, DropColumn
+from zeno.collections.schema import Collection, TextField, IntField
+from zeno.migrations.diff import SchemaComparator, AddTable, AddColumn, DropColumn
 
 
 # ---------------------------------------------------------------------------

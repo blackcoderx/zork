@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = typer.Typer(
-    name="cinderapi", help="Cinder — A lightweight backend framework for Python."
+    name="zeno", help="Zeno — A lightweight backend framework for Python."
 )
 
 migrate_app = typer.Typer(help="Manage database schema migrations.")
@@ -29,13 +29,13 @@ app.add_typer(migrate_app, name="migrate")
 
 
 def _load_app(app_path: str):
-    """Load a Cinder instance from a Python file.
+    """Load a Zeno instance from a Python file.
 
-    Returns ``(cinder_instance, resolved_path)``.
+    Returns ``(zeno_instance, resolved_path)``.
     Raises ``typer.Exit(1)`` with an error message if the file is not found or
-    no Cinder instance is present.
+    no Zeno instance is present.
     """
-    from cinder.app import Cinder
+    from zeno.app import Zeno
 
     path = Path(app_path).resolve()
     if not path.exists():
@@ -48,18 +48,18 @@ def _load_app(app_path: str):
     module_name = path.stem
     module = importlib.import_module(module_name)
 
-    cinder_instance = None
+    zeno_instance = None
     for attr_name in dir(module):
         attr = getattr(module, attr_name)
-        if isinstance(attr, Cinder):
-            cinder_instance = attr
+        if isinstance(attr, Zeno):
+            zeno_instance = attr
             break
 
-    if cinder_instance is None:
-        typer.echo("Error: No Cinder instance found in the module", err=True)
+    if zeno_instance is None:
+        typer.echo("Error: No Zeno instance found in the module", err=True)
         raise typer.Exit(1)
 
-    return cinder_instance, path
+    return zeno_instance, path
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +70,7 @@ def _load_app(app_path: str):
 @app.command()
 def serve(
     app_path: str = typer.Argument(
-        ..., help="Path to the Python file containing the Cinder app"
+        ..., help="Path to the Python file containing the Zeno app"
     ),
     reload: bool = typer.Option(
         False, "--reload", help="Enable auto-reload for development"
@@ -78,11 +78,11 @@ def serve(
     host: str = typer.Option("0.0.0.0", "--host", help="Host to bind to"),
     port: int = typer.Option(8000, "--port", help="Port to bind to"),
 ):
-    """Start the Cinder application server."""
+    """Start the Zeno application server."""
     import uvicorn
 
-    cinder_app, _ = _load_app(app_path)
-    starlette_app = cinder_app.build()
+    zeno_app, _ = _load_app(app_path)
+    starlette_app = zeno_app.build()
     uvicorn.run(starlette_app, host=host, port=port, reload=reload)
 
 
@@ -134,7 +134,7 @@ def promote(
     ),
 ):
     """Promote a user to a new role."""
-    from cinder.db.connection import Database
+    from zeno.db.connection import Database
 
     async def _promote():
         db = Database(database)
@@ -166,19 +166,19 @@ def generate_secret():
 @app.command()
 def doctor(
     app_path: Optional[str] = typer.Option(
-        None, "--app", help="Path to the Python file containing the Cinder app"
+        None, "--app", help="Path to the Python file containing the Zeno app"
     ),
     database: Optional[str] = typer.Option(
         None, "--database", help="Database URL to check"
     ),
 ):
     """Check connectivity to configured services."""
-    from cinder.db.connection import Database
+    from zeno.db.connection import Database
 
     # Resolve the DB URL
     if app_path is not None:
-        cinder_app, _ = _load_app(app_path)
-        db_url = cinder_app.database
+        zeno_app, _ = _load_app(app_path)
+        db_url = zeno_app.database
     elif database is not None:
         db_url = database
     else:
@@ -248,14 +248,14 @@ def doctor(
 @app.command()
 def routes(
     app_path: str = typer.Option(
-        ..., "--app", help="Path to the Python file containing the Cinder app"
+        ..., "--app", help="Path to the Python file containing the Zeno app"
     ),
 ):
     """List all registered routes."""
     from starlette.routing import Mount, Route, WebSocketRoute
 
-    cinder_app, _ = _load_app(app_path)
-    built = cinder_app.build()
+    zeno_app, _ = _load_app(app_path)
+    built = zeno_app.build()
 
     # build() returns a LazyInitMiddleware wrapping the middleware stack.
     # Walk inward to find the Starlette app that has .routes.
@@ -304,11 +304,11 @@ def routes(
 @app.command()
 def info(
     app_path: str = typer.Option(
-        ..., "--app", help="Path to the Python file containing the Cinder app"
+        ..., "--app", help="Path to the Python file containing the Zeno app"
     ),
 ):
-    """Show information about the Cinder application."""
-    cinder_app, _ = _load_app(app_path)
+    """Show information about the Zeno application."""
+    zeno_app, _ = _load_app(app_path)
 
     try:
         cinder_version = importlib.metadata.version("cinder")
@@ -316,19 +316,19 @@ def info(
         cinder_version = "development"
 
     # Mask password in DB URL: ://user:pass@ -> ://***:***@
-    db_url = cinder_app.database or ""
+    db_url = zeno_app.database or ""
     db_masked = re.sub(r"://([^:@]+):([^@]+)@", "://***:***@", db_url)
 
-    collections = list(getattr(cinder_app, "_collections", {}).keys())
-    auth = getattr(cinder_app, "_auth", None)
-    storage = getattr(cinder_app, "_storage_backend", None)
-    broker = getattr(cinder_app, "_broker", None)
+    collections = list(getattr(zeno_app, "_collections", {}).keys())
+    auth = getattr(zeno_app, "_auth", None)
+    storage = getattr(zeno_app, "_storage_backend", None)
+    broker = getattr(zeno_app, "_broker", None)
     auth_status = "enabled" if auth else "disabled"
     storage_type = type(storage).__name__ if storage else "not configured"
     broker_type = type(broker).__name__
 
-    typer.echo(f"Title:            {cinder_app.title}")
-    typer.echo(f"Version:          {cinder_app.version}")
+    typer.echo(f"Title:            {zeno_app.title}")
+    typer.echo(f"Version:          {zeno_app.version}")
     typer.echo(f"Python version:   {sys.version}")
     typer.echo(f"Cinder version:   {cinder_version}")
     typer.echo(f"Database:         {db_masked}")
@@ -346,10 +346,10 @@ def info(
 
 
 def _get_db_url_for_migrate(app_path: Optional[str]) -> tuple[str, object | None]:
-    """Return (db_url, cinder_app_or_None) for migrate commands."""
+    """Return (db_url, zeno_app_or_None) for migrate commands."""
     if app_path is not None:
-        cinder_app, _ = _load_app(app_path)
-        return cinder_app.database, cinder_app
+        zeno_app, _ = _load_app(app_path)
+        return zeno_app.database, zeno_app
     url = (
         os.environ.get("CINDER_DATABASE_URL")
         or os.environ.get("DATABASE_URL")
@@ -360,8 +360,8 @@ def _get_db_url_for_migrate(app_path: Optional[str]) -> tuple[str, object | None
 
 def _migrate_run(app_path: Optional[str], migrations_dir: str) -> None:
     """Apply all pending migrations (shared logic for callback and run sub-command)."""
-    from cinder.db.connection import Database
-    from cinder.migrations.engine import MigrationEngine
+    from zeno.db.connection import Database
+    from zeno.migrations.engine import MigrationEngine
 
     db_url, _ = _get_db_url_for_migrate(app_path)
 
@@ -386,7 +386,7 @@ def _migrate_run(app_path: Optional[str], migrations_dir: str) -> None:
 def migrate(
     ctx: typer.Context,
     app_path: Optional[str] = typer.Option(
-        None, "--app", help="Path to the Python file containing the Cinder app"
+        None, "--app", help="Path to the Python file containing the Zeno app"
     ),
     migrations_dir: str = typer.Option(
         "migrations", "--dir", help="Directory containing migration files"
@@ -400,7 +400,7 @@ def migrate(
 @migrate_app.command("run")
 def migrate_run(
     app_path: Optional[str] = typer.Option(
-        None, "--app", help="Path to the Python file containing the Cinder app"
+        None, "--app", help="Path to the Python file containing the Zeno app"
     ),
     migrations_dir: str = typer.Option(
         "migrations", "--dir", help="Directory containing migration files"
@@ -413,15 +413,15 @@ def migrate_run(
 @migrate_app.command("status")
 def migrate_status(
     app_path: Optional[str] = typer.Option(
-        None, "--app", help="Path to the Python file containing the Cinder app"
+        None, "--app", help="Path to the Python file containing the Zeno app"
     ),
     migrations_dir: str = typer.Option(
         "migrations", "--dir", help="Directory containing migration files"
     ),
 ):
     """Show the status of all migrations."""
-    from cinder.db.connection import Database
-    from cinder.migrations.engine import MigrationEngine
+    from zeno.db.connection import Database
+    from zeno.migrations.engine import MigrationEngine
 
     db_url, _ = _get_db_url_for_migrate(app_path)
 
@@ -451,15 +451,15 @@ def migrate_status(
 @migrate_app.command("rollback")
 def migrate_rollback(
     app_path: Optional[str] = typer.Option(
-        None, "--app", help="Path to the Python file containing the Cinder app"
+        None, "--app", help="Path to the Python file containing the Zeno app"
     ),
     migrations_dir: str = typer.Option(
         "migrations", "--dir", help="Directory containing migration files"
     ),
 ):
     """Roll back the last applied migration."""
-    from cinder.db.connection import Database
-    from cinder.migrations.engine import MigrationEngine
+    from zeno.db.connection import Database
+    from zeno.migrations.engine import MigrationEngine
 
     db_url, _ = _get_db_url_for_migrate(app_path)
 
@@ -483,7 +483,7 @@ def migrate_rollback(
 def migrate_create(
     name: str = typer.Argument(..., help="Name of the migration"),
     app_path: Optional[str] = typer.Option(
-        None, "--app", help="Path to the Python file containing the Cinder app"
+        None, "--app", help="Path to the Python file containing the Zeno app"
     ),
     migrations_dir: str = typer.Option(
         "migrations", "--dir", help="Directory containing migration files"
@@ -493,7 +493,7 @@ def migrate_create(
     ),
 ):
     """Create a new migration file."""
-    from cinder.migrations.generator import (
+    from zeno.migrations.generator import (
         generate_migration_content,
         write_migration_file,
     )
@@ -505,15 +505,15 @@ def migrate_create(
         return
 
     # Auto mode: diff the schema
-    from cinder.db.connection import Database
-    from cinder.migrations.diff import SchemaComparator
+    from zeno.db.connection import Database
+    from zeno.migrations.diff import SchemaComparator
 
-    db_url, cinder_app = _get_db_url_for_migrate(app_path)
-    if cinder_app is None:
+    db_url, zeno_app = _get_db_url_for_migrate(app_path)
+    if zeno_app is None:
         typer.echo("Error: --app is required for --auto", err=True)
         raise typer.Exit(1)
 
-    collections = [col for col, _ in cinder_app._collections.values()]
+    collections = [col for col, _ in zeno_app._collections.values()]
 
     async def _auto_create():
         db = Database(db_url)
@@ -559,9 +559,9 @@ def deploy(
     force: bool = typer.Option(False, "--force", help="Overwrite existing files"),
 ):
     """Generate deployment configuration files for your Cinder app."""
-    from cinder.deploy.config import generate_cinder_toml
-    from cinder.deploy.introspect import introspect
-    from cinder.deploy.platforms import PLATFORMS
+    from zeno.deploy.config import generate_cinder_toml
+    from zeno.deploy.introspect import introspect
+    from zeno.deploy.platforms import PLATFORMS
 
     # Resolve platform
     chosen = platform or _detect_platform()

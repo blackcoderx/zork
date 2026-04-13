@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from typer.testing import CliRunner
-from cinder.cli import app
+from zeno.cli import app
 
 runner = CliRunner()
 
@@ -19,14 +19,14 @@ class TestInit:
     def test_init_main_py_content(self, tmp_path):
         runner.invoke(app, ["init", str(tmp_path / "myproject")])
         content = (tmp_path / "myproject" / "main.py").read_text()
-        assert "from cinder" in content
-        assert "Cinder" in content
+        assert "from zeno" in content
+        assert "Zeno" in content
 
 
 class TestPromote:
     def test_promote_user(self, db_path):
-        from cinder.db.connection import Database
-        from cinder.auth.models import create_auth_tables
+        from zeno.db.connection import Database
+        from zeno.auth.models import create_auth_tables
 
         async def setup():
             db = Database(db_path)

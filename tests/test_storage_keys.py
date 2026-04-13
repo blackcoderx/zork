@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-from cinder.storage.keys import generate_key, sanitize_filename
+from zeno.storage.keys import generate_key, sanitize_filename
 
 
 class TestSanitizeFilename:

@@ -1,6 +1,6 @@
 import pytest
-from cinder.collections.schema import Collection, TextField
-from cinder.migrations.diff import SchemaComparator, AddIndex, DropIndex
+from zeno.collections.schema import Collection, TextField
+from zeno.migrations.diff import SchemaComparator, AddIndex, DropIndex
 
 
 class TestMigrationDiffIndexes:

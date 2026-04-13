@@ -1,11 +1,11 @@
 import pytest
 
-from cinder.app import Cinder
-from cinder.collections.schema import Collection, TextField, IntField
-from cinder.collections.store import CollectionStore
-from cinder.db.connection import Database
-from cinder.errors import CinderError
-from cinder.hooks import CinderContext, HookRegistry, HookRunner
+from zeno.app import Zeno
+from zeno.collections.schema import Collection, TextField, IntField
+from zeno.collections.store import CollectionStore
+from zeno.db.connection import Database
+from zeno.errors import ZenoError
+from zeno.hooks import ZenoContext, HookRegistry, HookRunner
 
 
 # ---------- Registry + Runner unit tests ----------
@@ -43,15 +43,15 @@ async def test_runner_mutates_payload_on_return():
 
 
 @pytest.mark.asyncio
-async def test_runner_propagates_cinder_error():
+async def test_runner_propagates_zeno_error():
     r = HookRegistry()
     runner = HookRunner(r)
 
     def boom(p, c):
-        raise CinderError(403, "nope")
+        raise ZenoError(403, "nope")
 
     r.on("e", boom)
-    with pytest.raises(CinderError):
+    with pytest.raises(ZenoError):
         await runner.run("e", {}, None)
 
 
@@ -129,7 +129,7 @@ async def test_before_delete_cancel_delete_soft_deletes(store_with_posts):
     store, posts = store_with_posts
 
     def cancel(record, ctx):
-        raise CinderError.cancel_delete()
+        raise ZenoError.cancel_delete()
 
     after_fired = []
     posts.on("before_delete", cancel)
@@ -145,14 +145,14 @@ async def test_before_delete_cancel_delete_soft_deletes(store_with_posts):
 
 
 @pytest.mark.asyncio
-async def test_before_create_cinder_error_aborts(store_with_posts):
+async def test_before_create_zeno_error_aborts(store_with_posts):
     store, posts = store_with_posts
 
     def veto(data, ctx):
-        raise CinderError(403, "no")
+        raise ZenoError(403, "no")
 
     posts.on("before_create", veto)
-    with pytest.raises(CinderError):
+    with pytest.raises(ZenoError):
         await store.create(posts, {"title": "X"})
     items, total = await store.list(posts)
     assert total == 0
@@ -180,7 +180,7 @@ async def test_custom_collection_event(store_with_posts):
     received = []
 
     posts.on("payment_confirmed", lambda payload, ctx: received.append(payload))
-    await posts.fire("payment_confirmed", {"id": 1}, CinderContext.system())
+    await posts.fire("payment_confirmed", {"id": 1}, ZenoContext.system())
     assert received == [{"id": 1}]
 
 
@@ -188,7 +188,7 @@ async def test_custom_collection_event(store_with_posts):
 async def test_fire_with_no_handlers_is_noop(store_with_posts):
     _, posts = store_with_posts
     # should not raise
-    await posts.fire("unregistered_event", "payload", CinderContext.system())
+    await posts.fire("unregistered_event", "payload", ZenoContext.system())
 
 
 # ---------- App-level hooks ----------
@@ -196,17 +196,17 @@ async def test_fire_with_no_handlers_is_noop(store_with_posts):
 
 @pytest.mark.asyncio
 async def test_app_hooks_on_and_fire():
-    app = Cinder(database=":memory:")
+    app = Zeno(database=":memory:")
     calls = []
     app.hooks.on("fraud:detected", lambda p, c: calls.append(p))
-    await app.hooks.fire("fraud:detected", {"score": 0.95}, CinderContext.system())
+    await app.hooks.fire("fraud:detected", {"score": 0.95}, ZenoContext.system())
     assert calls == [{"score": 0.95}]
 
 
 def test_app_startup_fires_via_testclient(tmp_path):
     from starlette.testclient import TestClient
 
-    app = Cinder(database=str(tmp_path / "t.db"))
+    app = Zeno(database=str(tmp_path / "t.db"))
     startup_calls = []
     shutdown_calls = []
     app.hooks.on("app:startup", lambda p, c: startup_calls.append(1))
@@ -228,7 +228,7 @@ async def test_app_level_handler_fires_collection_event(tmp_path):
     runs — proving registries are unified, not fragmented per collection."""
     from starlette.testclient import TestClient
 
-    app = Cinder(database=str(tmp_path / "u.db"))
+    app = Zeno(database=str(tmp_path / "u.db"))
     posts = Collection("posts", fields=[TextField("title", required=True)])
     app.register(posts)
 
@@ -250,7 +250,7 @@ async def test_pre_registered_handlers_migrate_on_bind(tmp_path):
     calls = []
     posts.on("before_create", lambda d, c: calls.append(d) or d)
 
-    app = Cinder(database=str(tmp_path / "m.db"))
+    app = Zeno(database=str(tmp_path / "m.db"))
     app.register(posts)  # triggers bind_registry — must migrate the handler
 
     db = Database(str(tmp_path / "m.db"))
@@ -273,23 +273,23 @@ def test_decorator_form_on_collection():
 
 
 @pytest.mark.asyncio
-async def test_cinder_on_shorthand():
-    app = Cinder(database=":memory:")
+async def test_zeno_on_shorthand():
+    app = Zeno(database=":memory:")
     calls = []
 
     @app.on("fraud:detected")
     def h(p, c):
         calls.append(p)
 
-    await app.hooks.fire("fraud:detected", {"x": 1}, CinderContext.system())
+    await app.hooks.fire("fraud:detected", {"x": 1}, ZenoContext.system())
     assert calls == [{"x": 1}]
 
 
 def test_app_error_hook_fires_on_unhandled_exception(tmp_path):
     from starlette.testclient import TestClient
-    from cinder.collections.schema import Collection, TextField
+    from zeno.collections.schema import Collection, TextField
 
-    app = Cinder(database=str(tmp_path / "err.db"))
+    app = Zeno(database=str(tmp_path / "err.db"))
     seen = []
     app.hooks.on("app:error", lambda exc, ctx: seen.append(type(exc).__name__))
 
@@ -313,9 +313,9 @@ def test_app_error_hook_fires_on_unhandled_exception(tmp_path):
 @pytest.mark.asyncio
 async def test_auth_register_fires_before_and_after(tmp_path):
     from starlette.testclient import TestClient
-    from cinder.auth import Auth
+    from zeno.auth import Auth
 
-    app = Cinder(database=str(tmp_path / "auth.db"))
+    app = Zeno(database=str(tmp_path / "auth.db"))
     auth = Auth()
     before = []
     after = []

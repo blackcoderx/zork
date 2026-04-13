@@ -13,34 +13,34 @@ from starlette.responses import HTMLResponse, JSONResponse
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from cinder.auth import Auth
-from cinder.auth.models import (
+from zeno.auth import Auth
+from zeno.auth.models import (
     cleanup_expired_blocklist,
     cleanup_expired_verifications,
     create_auth_tables,
 )
-from cinder.auth.routes import build_auth_routes
-from cinder.cache.backends import CacheBackend, MemoryCacheBackend, RedisCacheBackend
-from cinder.cache.invalidation import install_invalidation
-from cinder.cache.middleware import CacheMiddleware
-from cinder.collections.router import build_collection_routes
-from cinder.collections.schema import Collection, TextField
-from cinder.collections.store import CollectionStore
-from cinder.db.connection import Database
-from cinder.hooks.context import CinderContext
-from cinder.hooks.registry import HookRegistry
-from cinder.hooks.runner import HookRunner
-from cinder.pipeline import build_middleware_stack
-from cinder.ratelimit.backends import (
+from zeno.auth.routes import build_auth_routes
+from zeno.cache.backends import CacheBackend, MemoryCacheBackend, RedisCacheBackend
+from zeno.cache.invalidation import install_invalidation
+from zeno.cache.middleware import CacheMiddleware
+from zeno.collections.router import build_collection_routes
+from zeno.collections.schema import Collection, TextField
+from zeno.collections.store import CollectionStore
+from zeno.db.connection import Database
+from zeno.hooks.context import ZenoContext
+from zeno.hooks.registry import HookRegistry
+from zeno.hooks.runner import HookRunner
+from zeno.pipeline import build_middleware_stack
+from zeno.ratelimit.backends import (
     MemoryRateLimitBackend,
     RateLimitBackend,
     RedisRateLimitBackend,
 )
-from cinder.ratelimit.middleware import RateLimitMiddleware, RateLimitRule
-from cinder.realtime import RealtimeFacade
-from cinder.realtime.broker import RealtimeBroker
+from zeno.ratelimit.middleware import RateLimitMiddleware, RateLimitRule
+from zeno.realtime import RealtimeFacade
+from zeno.realtime.broker import RealtimeBroker
 
-logger = logging.getLogger("cinder")
+logger = logging.getLogger("zeno")
 
 
 class _CacheConfig:
@@ -49,7 +49,7 @@ class _CacheConfig:
     def __init__(self) -> None:
         self._backend: CacheBackend | None = None
         self._enabled: bool | None = None  # None = auto (True when Redis configured)
-        self._default_ttl: int = int(os.getenv("CINDER_CACHE_TTL", "300"))
+        self._default_ttl: int = int(os.getenv("ZENO_CACHE_TTL", "300"))
         self._per_user: bool = True
         self._excluded: list[str] = []
 
@@ -79,20 +79,20 @@ class _CacheConfig:
     def _is_enabled(self) -> bool:
         if self._enabled is not None:
             return self._enabled
-        env = os.getenv("CINDER_CACHE_ENABLED", "").lower()
+        env = os.getenv("ZENO_CACHE_ENABLED", "").lower()
         if env in ("true", "1", "yes"):
             return True
         if env in ("false", "0", "no"):
             return False
         # Auto: enable if Redis URL is set or a custom backend was provided
-        return bool(self._backend or os.getenv("CINDER_REDIS_URL"))
+        return bool(self._backend or os.getenv("ZENO_REDIS_URL"))
 
     def _resolve_backend(self) -> CacheBackend:
         if self._backend:
             return self._backend
-        redis_url = os.getenv("CINDER_REDIS_URL")
+        redis_url = os.getenv("ZENO_REDIS_URL")
         if redis_url:
-            prefix = os.getenv("CINDER_CACHE_PREFIX", "cinder")
+            prefix = os.getenv("ZENO_CACHE_PREFIX", "zeno")
             return RedisCacheBackend(prefix=prefix)
         return MemoryCacheBackend()
 
@@ -123,10 +123,10 @@ class _RateLimitConfig:
         self._enabled: bool | None = None  # None = auto (env var)
         self._rules: list[RateLimitRule] = []
         self._anon_limit, self._anon_window = self._parse_rule(
-            os.getenv("CINDER_RATE_LIMIT_ANON", "100/60")
+            os.getenv("ZENO_RATE_LIMIT_ANON", "100/60")
         )
         self._user_limit, self._user_window = self._parse_rule(
-            os.getenv("CINDER_RATE_LIMIT_USER", "1000/60")
+            os.getenv("ZENO_RATE_LIMIT_USER", "1000/60")
         )
 
     @staticmethod
@@ -156,13 +156,13 @@ class _RateLimitConfig:
     def _is_enabled(self) -> bool:
         if self._enabled is not None:
             return self._enabled
-        env = os.getenv("CINDER_RATE_LIMIT_ENABLED", "true").lower()
+        env = os.getenv("ZENO_RATE_LIMIT_ENABLED", "true").lower()
         return env not in ("false", "0", "no")
 
     def _resolve_backend(self) -> RateLimitBackend:
         if self._backend:
             return self._backend
-        redis_url = os.getenv("CINDER_REDIS_URL")
+        redis_url = os.getenv("ZENO_REDIS_URL")
         if redis_url:
             return RedisRateLimitBackend()
         return MemoryRateLimitBackend()
@@ -204,7 +204,7 @@ class _EmailConfig:
 
     Example::
 
-        from cinder.email import SMTPBackend
+        from zeno.email import SMTPBackend
 
         app.email.use(SMTPBackend.sendgrid(api_key=os.getenv("SENDGRID_API_KEY")))
         app.email.configure(
@@ -216,9 +216,9 @@ class _EmailConfig:
 
     def __init__(self) -> None:
         self._backend = None
-        self._from_address: str = os.getenv("CINDER_EMAIL_FROM", "noreply@localhost")
-        self._app_name: str = os.getenv("CINDER_APP_NAME", "Your App")
-        self._base_url: str = os.getenv("CINDER_BASE_URL", "http://localhost:8000")
+        self._from_address: str = os.getenv("ZENO_EMAIL_FROM", "noreply@localhost")
+        self._app_name: str = os.getenv("ZENO_APP_NAME", "Your App")
+        self._base_url: str = os.getenv("ZENO_BASE_URL", "http://localhost:8000")
         # Template override callables — each receives a context dict and returns
         # (subject, html_body, text_body). None = use built-in default.
         self._template_password_reset = None
@@ -226,7 +226,7 @@ class _EmailConfig:
         self._template_welcome = None
 
     def use(self, backend) -> "_EmailConfig":
-        """Plug in an :class:`~cinder.email.EmailBackend` implementation."""
+        """Plug in an :class:`~zeno.email.EmailBackend` implementation."""
         self._backend = backend
         return self
 
@@ -316,7 +316,7 @@ class _EmailConfig:
         }
         if self._template_password_reset:
             return self._template_password_reset(ctx)
-        from cinder.email.templates import password_reset_email
+        from zeno.email.templates import password_reset_email
 
         return password_reset_email(reset_url, self._app_name, expiry_minutes)
 
@@ -324,7 +324,7 @@ class _EmailConfig:
         ctx = {"verify_url": verify_url, "app_name": self._app_name}
         if self._template_verification:
             return self._template_verification(ctx)
-        from cinder.email.templates import email_verification_email
+        from zeno.email.templates import email_verification_email
 
         return email_verification_email(verify_url, self._app_name)
 
@@ -332,14 +332,14 @@ class _EmailConfig:
         ctx = {"user_email": user_email, "app_name": self._app_name}
         if self._template_welcome:
             return self._template_welcome(ctx)
-        from cinder.email.templates import welcome_email
+        from zeno.email.templates import welcome_email
 
         return welcome_email(user_email, self._app_name)
 
     def _resolve_backend(self):
         if self._backend:
             return self._backend
-        from cinder.email.backends import ConsoleEmailBackend
+        from zeno.email.backends import ConsoleEmailBackend
 
         return ConsoleEmailBackend()
 
@@ -352,7 +352,7 @@ class _EmailConfig:
 
         Can also be called directly from hooks for custom transactional emails::
 
-            from cinder.email import EmailMessage
+            from zeno.email import EmailMessage
 
             @app.on("orders:after_create")
             async def send_confirmation(order, ctx):
@@ -398,12 +398,12 @@ class _AppHooks:
         return await self._runner.fire(event, payload, ctx)
 
 
-class Cinder:
+class Zeno:
     def __init__(
         self,
         database: str = "app.db",
         *,
-        title: str = "Cinder API",
+        title: str = "Zeno API",
         version: str = "1.0.0",
     ):
         self.database = database
@@ -427,14 +427,14 @@ class Cinder:
         # Multi-DB: optional pre-configured backend (set via configure_database())
         self._db_backend_override = None
 
-    def configure_database(self, backend) -> "Cinder":
-        """Plug in a fully pre-configured :class:`~cinder.db.backends.base.DatabaseBackend`.
+    def configure_database(self, backend) -> "Zeno":
+        """Plug in a fully pre-configured :class:`~zeno.db.backends.base.DatabaseBackend`.
 
-        Takes precedence over ``CINDER_DATABASE_URL``, ``DATABASE_URL``, and
+        Takes precedence over ``ZENO_DATABASE_URL``, ``DATABASE_URL``, and
         the ``database=`` constructor argument.  Use this when you need full
         control over pool size, SSL, timeouts, or a custom driver::
 
-            from cinder.db.backends.postgresql import PostgreSQLBackend
+            from zeno.db.backends.postgresql import PostgreSQLBackend
 
             app.configure_database(
                 PostgreSQLBackend(
@@ -446,22 +446,22 @@ class Cinder:
             )
 
         You can also pass any class that implements the
-        :class:`~cinder.db.backends.base.DatabaseBackend` ABC (e.g. a Turso /
+        :class:`~zeno.db.backends.base.DatabaseBackend` ABC (e.g. a Turso /
         libsql adapter).
         """
         self._db_backend_override = backend
         return self
 
-    def configure_storage(self, backend) -> "Cinder":
+    def configure_storage(self, backend) -> "Zeno":
         """Set the file storage backend used by all ``FileField`` columns.
 
         Must be called before ``build()`` if any registered collection has a
-        ``FileField``. Raises ``CinderError`` at build time (not request time)
+        ``FileField``. Raises ``ZenoError`` at build time (not request time)
         if a ``FileField`` collection is registered without a storage backend.
 
         Example::
 
-            from cinder.storage import LocalFileBackend, S3CompatibleBackend
+            from zeno.storage import LocalFileBackend, S3CompatibleBackend
 
             # Local disk (zero config, dev-friendly)
             app.configure_storage(LocalFileBackend("./uploads"))
@@ -475,20 +475,20 @@ class Cinder:
         self._storage_backend = backend
         return self
 
-    def configure_redis(self, *, url: str) -> "Cinder":
+    def configure_redis(self, *, url: str) -> "Zeno":
         """Configure Redis for all subsystems in one call.
 
         Enables Redis-backed cache, rate-limiting, and realtime broker unless
         the developer has already plugged in custom backends.
 
-        Equivalent to setting ``CINDER_REDIS_URL`` environment variable but
+        Equivalent to setting ``ZENO_REDIS_URL`` environment variable but
         programmatic, which is useful in tests or when the URL is not known at
         module import time.
         """
-        from cinder.cache import redis_client as _rc
+        from zeno.cache import redis_client as _rc
 
         _rc.configure(url=url)
-        os.environ["CINDER_REDIS_URL"] = url
+        os.environ["ZENO_REDIS_URL"] = url
         return self
 
     def on(self, event: str, handler=None):
@@ -526,22 +526,22 @@ class Cinder:
         if self._secret:
             return self._secret
 
-        self._secret = os.getenv("CINDER_SECRET")
+        self._secret = os.getenv("ZENO_SECRET")
         if not self._secret:
             self._secret = secrets.token_urlsafe(32)
             logger.warning(
-                "No CINDER_SECRET set — tokens will not survive restarts. "
-                "Set CINDER_SECRET in your .env file."
+                "No ZENO_SECRET set — tokens will not survive restarts. "
+                "Set ZENO_SECRET in your .env file."
             )
         return self._secret
 
     def _resolve_broker(self):
-        """Select realtime broker based on CINDER_REALTIME_BROKER env var or Redis URL."""
-        broker_type = os.getenv("CINDER_REALTIME_BROKER", "").lower()
-        redis_url = os.getenv("CINDER_REDIS_URL")
+        """Select realtime broker based on ZENO_REALTIME_BROKER env var or Redis URL."""
+        broker_type = os.getenv("ZENO_REALTIME_BROKER", "").lower()
+        redis_url = os.getenv("ZENO_REDIS_URL")
         if broker_type == "redis" or (broker_type == "" and redis_url):
             try:
-                from cinder.realtime.redis_broker import RedisBroker
+                from zeno.realtime.redis_broker import RedisBroker
 
                 logger.info("Using Redis realtime broker")
                 return RedisBroker()
@@ -598,25 +598,25 @@ class Cinder:
         @asynccontextmanager
         async def lifespan(app: Starlette):
             await _init()
-            await app_runner.fire("app:startup", None, CinderContext.system())
+            await app_runner.fire("app:startup", None, ZenoContext.system())
             yield
-            await app_runner.fire("app:shutdown", None, CinderContext.system())
+            await app_runner.fire("app:shutdown", None, ZenoContext.system())
             await broker.close()
             await db.disconnect()
             logger.info("Database disconnected")
             # Close shared Redis client if one was created
-            from cinder.cache import redis_client as _rc
+            from zeno.cache import redis_client as _rc
 
             await _rc.close()
 
         # Validate: if any collection has a FileField, a storage backend must be set
-        from cinder.collections.schema import FileField as _FileField
-        from cinder.errors import CinderError as _CinderError
+        from zeno.collections.schema import FileField as _FileField
+        from zeno.errors import ZenoError as _ZenoError
 
         for name, (col, _) in collections.items():
             if any(isinstance(f, _FileField) for f in col.fields):
                 if self._storage_backend is None:
-                    raise _CinderError(
+                    raise _ZenoError(
                         500,
                         f"Collection '{name}' has a FileField but no storage backend is configured. "
                         "Call app.configure_storage(...) before app.build().",
@@ -624,7 +624,7 @@ class Cinder:
 
         # Install orphan file cleanup hooks
         if self._storage_backend is not None:
-            from cinder.storage.cleanup import install_file_cleanup
+            from zeno.storage.cleanup import install_file_cleanup
 
             install_file_cleanup(self._registry, self._storage_backend, collections)
 
@@ -639,7 +639,7 @@ class Cinder:
                 <head>
                     <meta charset="UTF-8" />
                     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-                    <title>Cinder Framework</title>
+                    <title>Zeno Framework</title>
                     <link rel="preconnect" href="https://fonts.googleapis.com" />
                     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
                     <link
@@ -781,7 +781,7 @@ class Cinder:
                 </head>
                 <body>
                     <div class="container">
-                        <h1>Cinder</h1>
+                        <h1>Zeno</h1>
                         <p>Your blazing fast Python backend is up and running.</p>
                         <div class="status">
                             <div class="status-dot"></div>
@@ -789,7 +789,7 @@ class Cinder:
                         </div>
                         <div class="links">
                             <a
-                                href="https://github.com/blackcoderx/cinder"
+                                href="https://github.com/blackcoderx/zeno"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 >GitHub</a
@@ -821,9 +821,9 @@ class Cinder:
         routes.extend(self.realtime._build_routes(db, secret))
 
         # Add OpenAPI/Swagger routes
-        from cinder.openapi import CinderOpenAPI
+        from zeno.openapi import ZenoOpenAPI
 
-        openapi = CinderOpenAPI(
+        openapi = ZenoOpenAPI(
             title=self.title,
             version=self.version,
             collections=collections,

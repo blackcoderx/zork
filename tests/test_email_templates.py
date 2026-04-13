@@ -1,9 +1,9 @@
-"""Tests for cinder.email.templates — built-in email template functions."""
+"""Tests for zeno.email.templates — built-in email template functions."""
 from __future__ import annotations
 
 import pytest
 
-from cinder.email.templates import (
+from zeno.email.templates import (
     email_verification_email,
     password_reset_email,
     welcome_email,
@@ -143,11 +143,11 @@ class TestEmailConfigTemplateOverrides:
     """Verify that _EmailConfig's on_* methods route to the override callable."""
 
     def _make_email_config(self):
-        # Import lazily so test file doesn't depend on full Cinder app init
+        # Import lazily so test file doesn't depend on full Zeno app init
         import os
         # Temporarily clear env so defaults are predictable
-        os.environ.setdefault("CINDER_APP_NAME", "TestApp")
-        from cinder.app import _EmailConfig
+        os.environ.setdefault("ZENO_APP_NAME", "TestApp")
+        from zeno.app import _EmailConfig
         return _EmailConfig()
 
     def test_render_password_reset_default(self):
@@ -207,13 +207,13 @@ class TestEmailConfigTemplateOverrides:
         assert cfg._base_url == "https://app.com"
 
     def test_use_sets_backend(self):
-        from cinder.email.backends import ConsoleEmailBackend
+        from zeno.email.backends import ConsoleEmailBackend
         cfg = self._make_email_config()
         backend = ConsoleEmailBackend()
         cfg.use(backend)
         assert cfg._resolve_backend() is backend
 
     def test_resolve_backend_defaults_to_console(self):
-        from cinder.email.backends import ConsoleEmailBackend
+        from zeno.email.backends import ConsoleEmailBackend
         cfg = self._make_email_config()
         assert isinstance(cfg._resolve_backend(), ConsoleEmailBackend)

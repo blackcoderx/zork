@@ -1,9 +1,9 @@
 import pytest
-from cinder.db.connection import Database
-from cinder.collections.schema import (
+from zeno.db.connection import Database
+from zeno.collections.schema import (
     Collection, TextField, IntField, BoolField, FloatField, JSONField,
 )
-from cinder.collections.store import CollectionStore
+from zeno.collections.store import CollectionStore
 
 
 @pytest.fixture

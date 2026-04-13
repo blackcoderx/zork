@@ -3,8 +3,8 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from cinder.db.backends.base import DatabaseIntegrityError
-from cinder.db.connection import Database
+from zeno.db.backends.base import DatabaseIntegrityError
+from zeno.db.connection import Database
 
 USERS_TABLE = "_users"
 TOKEN_BLOCKLIST_TABLE = "_token_blocklist"
@@ -12,7 +12,9 @@ PASSWORD_RESETS_TABLE = "_password_resets"
 EMAIL_VERIFICATIONS_TABLE = "_email_verifications"
 
 
-async def create_auth_tables(db: Database, extend_columns: list[str] | None = None) -> None:
+async def create_auth_tables(
+    db: Database, extend_columns: list[str] | None = None
+) -> None:
     extra_cols = ""
     if extend_columns:
         extra_cols = ", " + ", ".join(extend_columns)

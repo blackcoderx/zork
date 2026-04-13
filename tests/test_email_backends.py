@@ -1,5 +1,5 @@
-"""Tests for cinder.email.backends (EmailMessage, EmailBackend, ConsoleEmailBackend)
-and cinder.email.smtp (SMTPBackend — provider presets + retry logic).
+"""Tests for zeno.email.backends (EmailMessage, EmailBackend, ConsoleEmailBackend)
+and zeno.email.smtp (SMTPBackend — provider presets + retry logic).
 """
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch, call
 
 import pytest
 
-from cinder.email.backends import ConsoleEmailBackend, EmailMessage
-from cinder.email.smtp import SMTPBackend
+from zeno.email.backends import ConsoleEmailBackend, EmailMessage
+from zeno.email.smtp import SMTPBackend
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +71,7 @@ class TestConsoleEmailBackend:
             text_body="please verify",
             from_address="no-reply@app.com",
         )
-        with caplog.at_level(logging.INFO, logger="cinder.email"):
+        with caplog.at_level(logging.INFO, logger="zeno.email"):
             await backend.send(msg)
 
         combined = "\n".join(caplog.messages)

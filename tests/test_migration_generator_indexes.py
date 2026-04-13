@@ -1,6 +1,6 @@
 import pytest
-from cinder.migrations.diff import AddIndex, DropIndex
-from cinder.migrations.generator import generate_migration_content
+from zeno.migrations.diff import AddIndex, DropIndex
+from zeno.migrations.generator import generate_migration_content
 
 
 class TestMigrationGeneratorIndexes:
@@ -37,7 +37,7 @@ class TestMigrationGeneratorIndexes:
         assert "DROP INDEX IF EXISTS idx_posts_title" in content
 
     def test_mixed_operations_with_indexes(self):
-        from cinder.migrations.diff import AddColumn
+        from zeno.migrations.diff import AddColumn
 
         ops = [
             AddColumn(table="posts", field_name="category", col_sql="category TEXT"),

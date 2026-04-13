@@ -1,4 +1,4 @@
-"""Tests for the cinderapi deploy command and deployment generators."""
+"""Tests for the zeno deploy command and deployment generators."""
 
 import os
 from pathlib import Path
@@ -6,14 +6,14 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from cinder.cli import app
-from cinder.deploy.config import generate_cinder_toml
-from cinder.deploy.introspect import AppProfile
-from cinder.deploy.platforms.base import GeneratedFile
-from cinder.deploy.platforms.docker import DockerGenerator
-from cinder.deploy.platforms.fly import FlyGenerator
-from cinder.deploy.platforms.railway import RailwayGenerator
-from cinder.deploy.platforms.render import RenderGenerator
+from zeno.cli import app
+from zeno.deploy.config import generate_zeno_toml
+from zeno.deploy.introspect import AppProfile
+from zeno.deploy.platforms.base import GeneratedFile
+from zeno.deploy.platforms.docker import DockerGenerator
+from zeno.deploy.platforms.fly import FlyGenerator
+from zeno.deploy.platforms.railway import RailwayGenerator
+from zeno.deploy.platforms.render import RenderGenerator
 
 runner = CliRunner()
 
@@ -48,11 +48,11 @@ def sqlite_profile():
 
 @pytest.fixture
 def sample_app(tmp_path):
-    """Create a minimal Cinder app file for CLI tests."""
+    """Create a minimal Zeno app file for CLI tests."""
     app_file = tmp_path / "main.py"
     app_file.write_text(
-        'from cinder import Cinder\n'
-        'app = Cinder(database="app.db", title="Test")\n'
+        'from zeno import Zeno\n'
+        'app = Zeno(database="app.db", title="Test")\n'
     )
     return app_file
 
@@ -79,7 +79,7 @@ class TestDockerGenerator:
         gen = DockerGenerator(basic_profile, tmp_path)
         files = {f.path: f.content for f in gen.generate()}
         assert "useradd" in files["Dockerfile"]
-        assert "USER cinder" in files["Dockerfile"]
+        assert "USER zeno" in files["Dockerfile"]
 
     def test_dockerfile_has_uv(self, basic_profile, tmp_path):
         gen = DockerGenerator(basic_profile, tmp_path)
@@ -110,7 +110,7 @@ class TestDockerGenerator:
     def test_dockerfile_has_migrate(self, basic_profile, tmp_path):
         gen = DockerGenerator(basic_profile, tmp_path)
         files = {f.path: f.content for f in gen.generate()}
-        assert "cinderapi migrate run" in files["Dockerfile"]
+        assert "zeno migrate run" in files["Dockerfile"]
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +142,7 @@ class TestRailwayGenerator:
     def test_start_command_includes_migrate(self, basic_profile, tmp_path):
         gen = RailwayGenerator(basic_profile, tmp_path)
         content = gen.generate()[0].content
-        assert "cinderapi migrate run" in content
+        assert "zeno migrate run" in content
 
     def test_post_instructions_mention_postgres(self, basic_profile, tmp_path):
         gen = RailwayGenerator(basic_profile, tmp_path)
@@ -215,7 +215,7 @@ class TestFlyGenerator:
         gen = FlyGenerator(basic_profile, tmp_path)
         files = {f.path: f.content for f in gen.generate()}
         assert "release_command" in files["fly.toml"]
-        assert "cinderapi migrate run" in files["fly.toml"]
+        assert "zeno migrate run" in files["fly.toml"]
 
     def test_fly_toml_force_https(self, basic_profile, tmp_path):
         gen = FlyGenerator(basic_profile, tmp_path)
@@ -234,30 +234,30 @@ class TestFlyGenerator:
 
 
 # ---------------------------------------------------------------------------
-# cinder.toml Config
+# zeno.toml Config
 # ---------------------------------------------------------------------------
 
-class TestCinderToml:
+class TestZenoToml:
     def test_generates_valid_toml(self, basic_profile):
-        content = generate_cinder_toml(basic_profile, "railway")
+        content = generate_zeno_toml(basic_profile, "railway")
         assert '[project]' in content
         assert 'name = "myapp"' in content
         assert 'platform = "railway"' in content
 
     def test_database_type_postgresql(self, basic_profile):
-        content = generate_cinder_toml(basic_profile, "docker")
+        content = generate_zeno_toml(basic_profile, "docker")
         assert 'database = "postgresql"' in content
 
     def test_database_type_sqlite(self, sqlite_profile):
-        content = generate_cinder_toml(sqlite_profile, "docker")
+        content = generate_zeno_toml(sqlite_profile, "docker")
         assert 'database = "sqlite"' in content
 
     def test_redis_true(self, basic_profile):
-        content = generate_cinder_toml(basic_profile, "docker")
+        content = generate_zeno_toml(basic_profile, "docker")
         assert "redis = true" in content
 
     def test_redis_false(self, sqlite_profile):
-        content = generate_cinder_toml(sqlite_profile, "docker")
+        content = generate_zeno_toml(sqlite_profile, "docker")
         assert "redis = false" in content
 
 
@@ -267,22 +267,22 @@ class TestCinderToml:
 
 class TestPlatformDetection:
     def test_detect_railway(self, monkeypatch):
-        from cinder.cli import _detect_platform
+        from zeno.cli import _detect_platform
         monkeypatch.setenv("RAILWAY_ENVIRONMENT", "production")
         assert _detect_platform() == "railway"
 
     def test_detect_render(self, monkeypatch):
-        from cinder.cli import _detect_platform
+        from zeno.cli import _detect_platform
         monkeypatch.setenv("RENDER", "true")
         assert _detect_platform() == "render"
 
     def test_detect_fly(self, monkeypatch):
-        from cinder.cli import _detect_platform
+        from zeno.cli import _detect_platform
         monkeypatch.setenv("FLY_APP_NAME", "myapp")
         assert _detect_platform() == "fly"
 
     def test_default_docker(self, monkeypatch):
-        from cinder.cli import _detect_platform
+        from zeno.cli import _detect_platform
         monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
         monkeypatch.delenv("RENDER", raising=False)
         monkeypatch.delenv("FLY_APP_NAME", raising=False)
@@ -302,7 +302,7 @@ class TestDeployCLI:
         assert result.exit_code == 0
         assert "Dockerfile" in result.stdout
         assert "docker-compose.yml" in result.stdout
-        assert "cinder.toml" in result.stdout
+        assert "zeno.toml" in result.stdout
 
     def test_dry_run_railway(self, sample_app):
         result = runner.invoke(app, [

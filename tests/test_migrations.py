@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from cinder.migrations.engine import MigrationEngine, MigrationFile
+from zeno.migrations.engine import MigrationEngine, MigrationFile
 
 
 @pytest.fixture
