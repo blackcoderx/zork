@@ -51,7 +51,7 @@ cinder/
 │   ├── email/          # Email backends
 │   ├── migrations/     # Schema migration engine
 │   ├── openapi.py      # OpenAPI 3.1 generation
-│   └── cli.py          # CLI commands (cinder serve, migrate, etc.)
+│   └── cli.py          # CLI commands (cinderapi serve, migrate, etc.)
 ├── tests/              # Pytest test suite
 ├── web/                # Docs site (Astro + Starlight)
 └── pyproject.toml

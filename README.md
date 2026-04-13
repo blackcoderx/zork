@@ -1,9 +1,13 @@
 # CinderAPI
 
-[![PyPI version](https://img.shields.io/pypi/v/cinder?color=f47b20&label=cinder&style=flat-square)](https://pypi.org/project/cinder/)
-[![Python](https://img.shields.io/pypi/pyversions/cinder?color=3572A5&style=flat-square)](https://pypi.org/project/cinder/)
+<p align="center">
+
+[![PyPI version](https://img.shields.io/pypi/v/cinderapi?color=f47b20&label=cinderapi&style=flat-square)](https://pypi.org/project/cinderapi/)
+[![Python](https://img.shields.io/pypi/pyversions/cinderapi?color=3572A5&style=flat-square)](https://pypi.org/project/cinderapi/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-cinderapi.vercel.app-f47b20?style=flat-square)](https://cinderapi.vercel.app)
+
+</p>
 
 A lightweight, open-source backend framework for Python. Define your data schema — Cinder auto-generates a full REST API with auth, CRUD, filtering, and more.
 
@@ -51,7 +55,7 @@ app.serve()
 ```
 
 ```bash
-cinder serve main.py
+cinderapi serve main.py
 # Server running at http://localhost:8000
 ```
 
@@ -80,7 +84,7 @@ You now have:
 - Rate limiting per route
 - Email delivery with SMTP and provider presets
 - Schema migrations via CLI
-- One-command deployment — generate Docker, Railway, Render, and Fly.io configs with `cinder deploy`
+- One-command deployment — generate Docker, Railway, Render, and Fly.io configs with `cinderapi deploy`
 - Auto-generated OpenAPI 3.1 + Swagger UI
 - Zero boilerplate — one file to a working API
 
