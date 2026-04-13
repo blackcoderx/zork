@@ -12,7 +12,7 @@ sidebar:
 ## Generate the config
 
 ```bash
-cinder deploy --platform railway --app main.py
+cinderapi deploy --platform railway --app main.py
 ```
 
 This creates:
@@ -29,7 +29,7 @@ This creates:
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "cinder migrate run --app main.py && gunicorn -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:$PORT"
+startCommand = "cinderapi migrate run --app main.py && gunicorn -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:$PORT"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 5
 restartPolicyType = "ON_FAILURE"
@@ -59,7 +59,7 @@ The start command runs migrations first, then starts gunicorn. `$PORT` is inject
      ```
 4. **Set your secret key** in the web service environment variables:
    ```
-   CINDER_SECRET = <output of cinder generate-secret>
+   CINDER_SECRET = <output of cinderapi generate-secret>
    ```
 5. Railway deploys automatically on every push to your connected branch
 
@@ -77,7 +77,7 @@ Set these in the Railway dashboard under your web service → **Variables**:
 
 | Variable | Value |
 |----------|-------|
-| `CINDER_SECRET` | Output of `cinder generate-secret` |
+| `CINDER_SECRET` | Output of `cinderapi generate-secret` |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (reference variable) |
 | `CINDER_REDIS_URL` | `${{Redis.REDIS_URL}}` (reference variable) |
 

@@ -3,16 +3,16 @@ title: CLI Commands
 description: All Cinder CLI commands and their options
 ---
 
-The `cinder` CLI is installed alongside the framework and provides commands for running your app, managing migrations, and inspecting the application.
+The `cinderapi` CLI is installed alongside the framework and provides commands for running your app, managing migrations, and inspecting the application.
 
-## `cinder serve`
+## `cinderapi serve`
 
 Start the development server.
 
 ```bash
-cinder serve main.py
-cinder serve main.py --reload
-cinder serve main.py --host 0.0.0.0 --port 8080
+cinderapi serve main.py
+cinderapi serve main.py --reload
+cinderapi serve main.py --host 0.0.0.0 --port 8080
 ```
 
 | Option | Default | Description |
@@ -24,12 +24,12 @@ cinder serve main.py --host 0.0.0.0 --port 8080
 
 ---
 
-## `cinder init`
+## `cinderapi init`
 
 Scaffold a new Cinder project.
 
 ```bash
-cinder init myapp
+cinderapi init myapp
 ```
 
 Creates a `myapp/` directory with:
@@ -39,14 +39,14 @@ Creates a `myapp/` directory with:
 
 ---
 
-## `cinder promote`
+## `cinderapi promote`
 
 Promote a user to a new role.
 
 ```bash
-cinder promote alice@example.com
-cinder promote alice@example.com --role moderator
-cinder promote alice@example.com --database prod.db
+cinderapi promote alice@example.com
+cinderapi promote alice@example.com --role moderator
+cinderapi promote alice@example.com --database prod.db
 ```
 
 | Option | Default | Description |
@@ -57,12 +57,12 @@ cinder promote alice@example.com --database prod.db
 
 ---
 
-## `cinder generate-secret`
+## `cinderapi generate-secret`
 
 Generate a cryptographically secure secret key for `CINDER_SECRET`.
 
 ```bash
-cinder generate-secret
+cinderapi generate-secret
 # Output: a3f8b2c1d4e5...
 ```
 
@@ -70,14 +70,14 @@ Copy the output into your `.env` file.
 
 ---
 
-## `cinder doctor`
+## `cinderapi doctor`
 
 Check connectivity to configured services.
 
 ```bash
-cinder doctor
-cinder doctor --app main.py
-cinder doctor --database postgresql://user:pass@localhost/mydb
+cinderapi doctor
+cinderapi doctor --app main.py
+cinderapi doctor --database postgresql://user:pass@localhost/mydb
 ```
 
 Checks:
@@ -86,12 +86,12 @@ Checks:
 
 ---
 
-## `cinder routes`
+## `cinderapi routes`
 
 List all registered routes for your app.
 
 ```bash
-cinder routes --app main.py
+cinderapi routes --app main.py
 ```
 
 Output:
@@ -111,12 +111,12 @@ DELETE               /api/posts/{id}                                    posts_de
 
 ---
 
-## `cinder info`
+## `cinderapi info`
 
 Show a summary of the application configuration.
 
 ```bash
-cinder info --app main.py
+cinderapi info --app main.py
 ```
 
 Output:
@@ -135,16 +135,16 @@ Realtime broker:  RealtimeBroker
 
 ---
 
-## `cinder deploy`
+## `cinderapi deploy`
 
 Generate deployment configuration files for your app. See [Deployment](/deployment/) for full documentation.
 
 ```bash
-cinder deploy --platform docker
-cinder deploy --platform railway --app main.py
-cinder deploy --platform render --dry-run
-cinder deploy --platform fly --force
-cinder deploy  # auto-detects platform from environment
+cinderapi deploy --platform docker
+cinderapi deploy --platform railway --app main.py
+cinderapi deploy --platform render --dry-run
+cinderapi deploy --platform fly --force
+cinderapi deploy  # auto-detects platform from environment
 ```
 
 | Option | Default | Description |
@@ -158,22 +158,22 @@ Platform auto-detection reads `RAILWAY_ENVIRONMENT`, `RENDER`, and `FLY_APP_NAME
 
 ---
 
-## `cinder migrate`
+## `cinderapi migrate`
 
 Apply pending migrations. See [Migrations](/migrations/commands/) for full documentation.
 
 ```bash
-cinder migrate
-cinder migrate --app main.py
-cinder migrate --dir custom/migrations
+cinderapi migrate
+cinderapi migrate --app main.py
+cinderapi migrate --dir custom/migrations
 ```
 
 ### Sub-commands
 
 | Command | Description |
 |---------|-------------|
-| `cinder migrate run` | Apply all pending migrations (same as `cinder migrate`) |
-| `cinder migrate status` | Show the status of all migrations |
-| `cinder migrate create <name>` | Create a new blank migration file |
-| `cinder migrate create <name> --auto` | Auto-generate migration from schema diff |
-| `cinder migrate rollback` | Roll back the last applied migration |
+| `cinderapi migrate run` | Apply all pending migrations (same as `cinderapi migrate`) |
+| `cinderapi migrate status` | Show the status of all migrations |
+| `cinderapi migrate create <name>` | Create a new blank migration file |
+| `cinderapi migrate create <name> --auto` | Auto-generate migration from schema diff |
+| `cinderapi migrate rollback` | Roll back the last applied migration |

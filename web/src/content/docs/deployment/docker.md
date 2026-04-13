@@ -12,7 +12,7 @@ Docker is the most portable deployment option. Use it for self-hosted servers, V
 ## Generate the files
 
 ```bash
-cinder deploy --platform docker --app main.py
+cinderapi deploy --platform docker --app main.py
 ```
 
 This creates:
@@ -54,7 +54,7 @@ ENV PYTHONUNBUFFERED=1
 USER cinder
 EXPOSE 8000
 
-CMD ["sh", "-c", "cinder migrate run --app main.py && gunicorn -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:8000"]
+CMD ["sh", "-c", "cinderapi migrate run --app main.py && gunicorn -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:8000"]
 ```
 
 Key decisions:
@@ -62,7 +62,7 @@ Key decisions:
 - **Multi-stage build** — dependencies are installed in the builder stage; the runtime stage copies only the result, keeping the final image small
 - **uv** — significantly faster than pip for resolving and installing packages; uses `uv.lock` for reproducibility
 - **Non-root user** — the app runs as UID 1001 (`cinder`) for security
-- **Migrations on startup** — `cinder migrate run` runs before gunicorn starts, ensuring the schema is always up to date
+- **Migrations on startup** — `cinderapi migrate run` runs before gunicorn starts, ensuring the schema is always up to date
 - **Gunicorn + UvicornWorker** — production-grade process management with async ASGI support
 
 ---
@@ -155,7 +155,7 @@ For production, prefer injecting secrets via your hosting environment rather tha
 Edit the `CMD` in the Dockerfile:
 
 ```dockerfile
-CMD ["sh", "-c", "cinder migrate run --app main.py && gunicorn -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:8000 --workers 4"]
+CMD ["sh", "-c", "cinderapi migrate run --app main.py && gunicorn -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:8000 --workers 4"]
 ```
 
 A good starting point is `(2 × CPU cores) + 1`.

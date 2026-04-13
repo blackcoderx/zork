@@ -12,7 +12,7 @@ sidebar:
 ## Generate the config
 
 ```bash
-cinder deploy --platform render --app main.py
+cinderapi deploy --platform render --app main.py
 ```
 
 This creates:
@@ -30,7 +30,7 @@ services:
     name: myapp
     runtime: python
     buildCommand: pip install uv && uv sync --frozen --no-dev
-    startCommand: cinder migrate run --app main.py && gunicorn -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:$PORT
+    startCommand: cinderapi migrate run --app main.py && gunicorn -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:$PORT
     healthCheckPath: /api/health
     envVars:
       - key: CINDER_SECRET

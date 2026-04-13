@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-`cinder deploy` generates production-ready deployment configuration files for your app. It inspects your Cinder instance to detect which services you need — database, Redis, auth, file storage — and writes platform-specific config tailored to those requirements.
+`cinderapi deploy` generates production-ready deployment configuration files for your app. It inspects your Cinder instance to detect which services you need — database, Redis, auth, file storage — and writes platform-specific config tailored to those requirements.
 
 It does **not** deploy your app. It generates the files so you can commit them and let the platform handle the rest.
 
@@ -16,7 +16,7 @@ It does **not** deploy your app. It generates the files so you can commit them a
 Generate a secret key and add it to your `.env` file:
 
 ```bash
-cinder generate-secret
+cinderapi generate-secret
 # Copy the output into your .env as CINDER_SECRET
 ```
 
@@ -27,7 +27,7 @@ This is required for JWT signing. Tokens are invalid without a persistent secret
 ## Usage
 
 ```bash
-cinder deploy --platform <platform> --app main.py
+cinderapi deploy --platform <platform> --app main.py
 ```
 
 | Option | Default | Description |
@@ -52,7 +52,7 @@ cinder deploy --platform <platform> --app main.py
 
 ## App introspection
 
-`cinder deploy` loads your app file and inspects it to determine what your app needs:
+`cinderapi deploy` loads your app file and inspects it to determine what your app needs:
 
 - **Database type** — reads `CINDER_DATABASE_URL`, `DATABASE_URL`, or the `database=` constructor argument to detect PostgreSQL, MySQL, or SQLite
 - **Redis** — checks `CINDER_REDIS_URL` and whether cache, rate-limit, or realtime backends are Redis-backed
@@ -82,7 +82,7 @@ If you omit `--platform`, Cinder detects it from environment variables:
 Use `--dry-run` to see exactly what will be generated without touching the filesystem:
 
 ```bash
-cinder deploy --platform railway --dry-run
+cinderapi deploy --platform railway --dry-run
 ```
 
 ---

@@ -70,8 +70,8 @@ app.register(notes, auth=["read:owner", "write:owner"])
 Use the CLI to grant admin access:
 
 ```bash
-cinder promote alice@example.com
-cinder promote bob@example.com --role moderator
+cinderapi promote alice@example.com
+cinderapi promote bob@example.com --role moderator
 ```
 
 Or update the `_users` table directly.

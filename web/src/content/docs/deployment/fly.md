@@ -26,7 +26,7 @@ fly auth login
 ## Generate the files
 
 ```bash
-cinder deploy --platform fly --app main.py
+cinderapi deploy --platform fly --app main.py
 ```
 
 This creates:
@@ -47,7 +47,7 @@ primary_region = "iad"
 [build]
 
 [deploy]
-  release_command = "cinder migrate run --app main.py"
+  release_command = "cinderapi migrate run --app main.py"
 
 [http_service]
   internal_port = 8000
@@ -76,7 +76,7 @@ primary_region = "iad"
 
 Key settings:
 
-- `release_command` — runs `cinder migrate run` before each deploy, in a temporary VM, before traffic switches over. Migrations are applied safely with zero downtime.
+- `release_command` — runs `cinderapi migrate run` before each deploy, in a temporary VM, before traffic switches over. Migrations are applied safely with zero downtime.
 - `force_https = true` — all HTTP traffic is redirected to HTTPS automatically
 - `auto_stop_machines` / `auto_start_machines` — machines stop when idle and start on incoming requests (saves cost on low-traffic apps)
 - Health checks on `/api/health` ensure traffic only goes to healthy instances
@@ -96,7 +96,7 @@ This registers the app name and region without deploying anything.
 **2. Set your secret key:**
 
 ```bash
-fly secrets set CINDER_SECRET=$(cinder generate-secret)
+fly secrets set CINDER_SECRET=$(cinderapi generate-secret)
 ```
 
 Secrets are encrypted and injected as environment variables at runtime. They are never stored in `fly.toml`.

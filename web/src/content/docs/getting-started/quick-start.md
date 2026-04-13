@@ -31,7 +31,7 @@ app.use_auth(auth)
 ## 2. Start the server
 
 ```bash
-cinder serve main.py
+cinderapi serve main.py
 ```
 
 The server starts on `http://localhost:8000`.
@@ -39,7 +39,7 @@ The server starts on `http://localhost:8000`.
 For development with auto-reload:
 
 ```bash
-cinder serve main.py --reload
+cinderapi serve main.py --reload
 ```
 
 ## 3. What you get

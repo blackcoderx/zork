@@ -35,7 +35,7 @@ Use [Migrations](/migrations/commands/) when you need to:
 
 ## Schema drift in production
 
-For production deployments, the recommended approach is to use explicit migrations (run `cinder migrate`) and rely on auto-sync only for convenience during local development.
+For production deployments, the recommended approach is to use explicit migrations (run `cinderapi migrate`) and rely on auto-sync only for convenience during local development.
 
 You can still use auto-sync in production for additive changes — new fields are always safe. But any destructive or transformative schema change must go through a migration.
 

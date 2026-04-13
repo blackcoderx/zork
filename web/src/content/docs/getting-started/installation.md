@@ -57,7 +57,7 @@ uv add "cinder[postgres,redis,email]"
 Use the CLI to create a project with a starter layout:
 
 ```bash
-cinder init myapp
+cinderapi init myapp
 cd myapp
 ```
 
