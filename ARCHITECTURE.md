@@ -1,5 +1,29 @@
 # Zeno Architecture & Developer Guide
 
+## Table of Contents
+
+1. [What is Zeno?](#what-is-zeno)
+2. [High-Level Architecture Map](#high-level-architecture-map)
+3. [Project Structure](#project-structure)
+4. [Detailed Subsystem Breakdown](#detailed-subsystem-breakdown-and-file-manifest)
+   - [1. The Application Core](#1-the-application-core-srczeno)
+   - [2. The Database Layer](#2-the-database-layer-srczenodb)
+   - [3. Dynamic Collections & API Generation](#3-dynamic-collections--api-generation-srczenocollections)
+   - [4. Lifecycle Hooks](#4-lifecycle-hooks-srczenohooks)
+   - [5. Authentication System](#5-authentication-system-srczenoauth)
+   - [6. File Storage Subsystem](#6-file-storage-subsystem-srczenostorage)
+   - [7. Email Subsystem](#7-email-subsystem-srczenoemail)
+   - [8. Cache Subsystem](#8-cache-subsystem-srczenocache)
+   - [9. Rate-Limit Subsystem](#9-rate-limit-subsystem-srczenoratelimit)
+   - [10. Realtime Subsystem](#10-realtime-subsystem-srczenorealtime)
+   - [11. Migrations Subsystem](#11-migrations-subsystem-srczenomigrations)
+5. [Test Suite Overview](#test-suite-overview)
+6. [Important Architectural Principles](#important-architectural-principles)
+7. [Environment Variables Reference](#environment-variables-reference)
+8. [Quick Reference](#quick-reference)
+
+---
+
 ## What is Zeno?
 
 Zeno is a lightweight, open-source backend framework for Python. It is designed to rapidly build production-ready REST APIs and realtime applications by automatically generating CRUD endpoints and Pub/Sub streams directly from Python data schemas.
@@ -126,9 +150,122 @@ graph TD
 
 ---
 
+## Project Structure
+
+```
+zeno-api/
+├── src/zeno/                    # Framework source
+│   ├── __init__.py             # Public API exports
+│   ├── app.py                  # Zeno app builder
+│   ├── cli.py                  # CLI commands
+│   ├── errors.py               # Exception classes
+│   ├── openapi.py              # OpenAPI 3.1 + Swagger UI
+│   ├── pipeline.py             # ASGI middleware stack
+│   ├── auth/                   # Authentication & JWT
+│   │   ├── __init__.py
+│   │   ├── models.py          # User schema, token blocklist
+│   │   ├── routes.py          # Auth endpoints
+│   │   ├── passwords.py       # Password hashing
+│   │   └── tokens.py          # JWT encode/decode
+│   ├── cache/                  # Caching layer
+│   │   ├── __init__.py
+│   │   ├── backends.py        # CacheBackend ABC, implementations
+│   │   ├── middleware.py      # CacheMiddleware
+│   │   ├── invalidation.py    # Tag-based cache invalidation
+│   │   └── redis_client.py    # Shared Redis client
+│   ├── collections/             # Dynamic schemas & CRUD
+│   │   ├── __init__.py
+│   │   ├── schema.py          # Collection, Field types
+│   │   ├── router.py          # CRUD endpoints
+│   │   └── store.py           # Query builder
+│   ├── db/                     # Database backends
+│   │   ├── __init__.py
+│   │   ├── connection.py      # Database shim
+│   │   └── backends/
+│   │       ├── __init__.py    # resolve_backend()
+│   │       ├── base.py        # DatabaseBackend ABC
+│   │       ├── sqlite.py      # SQLite backend
+│   │       ├── postgresql.py  # PostgreSQL backend
+│   │       └── mysql.py       # MySQL backend
+│   ├── deploy/                 # Deployment generators
+│   │   ├── __init__.py
+│   │   ├── introspect.py     # App introspection
+│   │   ├── config.py          # zeno.toml generator
+│   │   └── platforms/
+│   │       ├── __init__.py
+│   │       ├── base.py        # PlatformGenerator ABC
+│   │       ├── docker.py      # Docker/Docker Compose
+│   │       ├── render.py      # Render
+│   │       ├── fly.py         # Fly.io
+│   │       └── railway.py     # Railway
+│   ├── email/                  # Email delivery
+│   │   ├── __init__.py
+│   │   ├── backends.py       # EmailBackend ABC, implementations
+│   │   ├── smtp.py           # SMTP backend
+│   │   └── templates.py       # Built-in email templates
+│   ├── hooks/                  # Lifecycle hooks
+│   │   ├── __init__.py
+│   │   ├── registry.py       # Hook storage
+│   │   ├── runner.py         # Hook executor
+│   │   └── context.py        # ZenoContext
+│   ├── migrations/             # Schema migrations
+│   │   ├── __init__.py
+│   │   ├── engine.py         # MigrationEngine
+│   │   ├── diff.py           # SchemaComparator
+│   │   └── generator.py      # Migration file generator
+│   ├── ratelimit/             # Rate limiting
+│   │   ├── __init__.py
+│   │   ├── backends.py       # RateLimitBackend ABC, implementations
+│   │   └── middleware.py     # RateLimitMiddleware
+│   ├── realtime/             # WebSocket & SSE
+│   │   ├── __init__.py
+│   │   ├── broker.py        # RealtimeBroker, BrokerProtocol
+│   │   ├── redis_broker.py  # RedisBroker
+│   │   ├── websocket.py     # WebSocket handler
+│   │   ├── sse.py           # SSE handler
+│   │   ├── bridge.py        # Collections-to-broker bridge
+│   │   ├── auth.py          # Realtime auth
+│   │   └── auth_filter.py   # RBAC filtering
+│   └── storage/              # File storage
+│       ├── __init__.py
+│       ├── backends.py      # FileStorageBackend ABC, implementations
+│       ├── s3.py            # S3CompatibleBackend
+│       ├── keys.py          # Key generation
+│       ├── routes.py        # Upload/download/delete handlers
+│       └── cleanup.py       # Orphan file cleanup
+├── tests/                      # Test suite (pytest)
+│   ├── conftest.py          # Shared fixtures
+│   ├── test_*.py            # Unit & integration tests
+│   └── test_integration.py   # Full app integration tests
+└── web/                       # Documentation site (Astro + Starlight)
+    ├── src/
+    │   ├── components/
+    │   └── content/docs/
+    └── package.json
+```
+
+---
+
 ## Detailed Subsystem Breakdown and File Manifest
 
 ### 1. The Application Core (`src/zeno/`)
+
+**Public API (from `__init__.py`):**
+```python
+from zeno import (
+    Zeno,              # App builder
+    Auth,              # Auth configuration
+    Collection,        # Schema definition
+    TextField, IntField, FloatField, BoolField,    # Basic fields
+    DateTimeField, URLField, JSONField,           # Special fields
+    RelationField,     # Relational field
+    FileField,         # File field
+    ZenoError,         # Exception class
+    CacheBackend, MemoryCacheBackend, RedisCacheBackend,  # Cache
+    RateLimitBackend, MemoryRateLimitBackend, RedisRateLimitBackend,  # Rate limit
+    RateLimitRule,     # Rate limit rule
+)
+```
 
 * **`app.py`** — Defines the `Zeno` class. Central registry where developers register schemas, configure auth, email, storage, database, caching, and rate-limiting, and initialize the realtime broker. Exposes five fluent configuration entry-points:
   - `app.cache` → `_CacheConfig` — cache backend, TTL, per-user segmentation, excluded paths.
@@ -141,6 +278,19 @@ graph TD
 * **`errors.py`** — A unified set of exceptions allowing standard error responses across all modules.
 
 ### 2. The Database Layer (`src/zeno/db/`)
+
+**Public API:**
+```python
+from zeno.db import Database                      # Connection shim
+from zeno.db.backends import (
+    DatabaseBackend,     # ABC
+    SQLiteBackend,      # SQLite implementation
+    PostgreSQLBackend,  # PostgreSQL (zeno[postgres])
+    MySQLBackend,       # MySQL (zeno[mysql])
+    resolve_backend,    # Factory function
+)
+from zeno.db.backends.base import DatabaseIntegrityError
+```
 
 Zeno's database layer is fully pluggable, mirroring the same backend-ABC pattern used by storage, email, cache, and rate-limit subsystems. All callers write SQL using `?` as the universal placeholder; each backend converts it internally to the native style.
 
@@ -158,6 +308,23 @@ Zeno's database layer is fully pluggable, mirroring the same backend-ABC pattern
 
 ### 3. Dynamic Collections & API Generation (`src/zeno/collections/`)
 
+**Public API:**
+```python
+from zeno.collections import Collection  # Schema definition
+from zeno.collections.schema import (
+    Field,              # Base field class
+    TextField,         # String field
+    IntField,          # Integer field
+    FloatField,        # Float field
+    BoolField,         # Boolean field
+    DateTimeField,     # DateTime field
+    URLField,          # URL field
+    JSONField,         # JSON field
+    RelationField,     # Foreign key field
+    FileField,         # File upload field
+)
+```
+
 * **`schema.py`** — Contains `Collection` and all field definitions. Built-in field types:
   - `TextField`, `IntField` (min/max), `FloatField` (min/max), `BoolField`, `DateTimeField` (auto_now), `URLField`, `JSONField`, `RelationField`
   - **`FileField`** *(Phase 4)* — stores file metadata as JSON in a SQLite TEXT column; actual bytes live in the configured `FileStorageBackend`. Parameters: `max_size`, `allowed_types` (MIME wildcards), `multiple`, `public`.
@@ -172,6 +339,20 @@ Zeno's database layer is fully pluggable, mirroring the same backend-ABC pattern
 
 ### 5. Authentication System (`src/zeno/auth/`)
 
+**Public API:**
+```python
+from zeno.auth import Auth  # Auth configuration
+from zeno.auth.models import (
+    USERS_TABLE,           # Table name constant
+    block_token,          # Revoke a token
+)
+from zeno.auth.tokens import (
+    create_token,         # Create JWT
+    decode_token,        # Decode JWT
+    refresh_token,        # Refresh JWT
+)
+```
+
 * **`models.py`** — Configures the built-in `_users` table, allows developers to extend it with custom fields. Creates and owns:
   - `_token_blocklist` — revoked JWT tokens (auto-cleaned on startup). `block_token()` uses a try/except on `DatabaseIntegrityError` instead of `INSERT OR IGNORE` — portable across all backends.
   - `_email_verifications` — one-time 24-hour verification tokens. `create_verification_token(db, user_id, email)` deletes any prior token for the user before inserting the new one (re-send invalidation). `cleanup_expired_verifications(db)` is called on startup.
@@ -182,7 +363,16 @@ Zeno's database layer is fully pluggable, mirroring the same backend-ABC pattern
 * **`passwords.py`** — Securely hashes and verifies user passwords.
 * **`tokens.py`** — Signs and verifies JSON Web Tokens for stateless session handling.
 
-### 6. File Storage Subsystem (`src/zeno/storage/`) *(Phase 4)*
+### 6. File Storage Subsystem (`src/zeno/storage/`)
+
+**Public API:**
+```python
+from zeno.storage import (
+    FileStorageBackend,   # ABC
+    LocalFileBackend,   # Local disk storage
+    S3CompatibleBackend, # S3-compatible storage
+)
+```
 
 * **`backends.py`** — `FileStorageBackend` ABC defines the contract every backend must implement: `put`, `get`, `delete`, `signed_url`, `url`. `LocalFileBackend` stores files on disk, always proxied (no signing). Path-traversal is prevented with `Path.resolve()`.
 * **`s3.py`** — `S3CompatibleBackend` — wraps boto3 in `asyncio.get_event_loop().run_in_executor` for async safety. Ships with seven provider preset classmethods: `.aws()`, `.r2()`, `.minio()`, `.backblaze()`, `.digitalocean()`, `.wasabi()`, `.gcs()`. All use the same underlying S3 wire protocol; only `endpoint_url` and `region_name` differ. Presigned URLs are generated fresh per request and never stored.
@@ -193,7 +383,22 @@ Zeno's database layer is fully pluggable, mirroring the same backend-ABC pattern
   - **Delete** — supports `?index=N` (remove one file from a `multiple` field) and `?all=true` (remove all). Calls `backend.delete()` and updates metadata.
 * **`cleanup.py`** — `install_file_cleanup(registry, backend, collections)` — installs `after_delete` hooks on all collections with FileFields. On record deletion, iterates stored metadata and calls `backend.delete(key)` for each file. Failures are logged and swallowed — background cleanup never raises.
 
-### 7. Email Subsystem (`src/zeno/email/`) *(Phase 5)*
+### 7. Email Subsystem (`src/zeno/email/`)
+
+**Public API:**
+```python
+from zeno.email import (
+    EmailBackend,       # ABC
+    ConsoleEmailBackend,  # Development fallback
+    SMTPBackend,      # SMTP delivery
+    EmailMessage,     # Message dataclass
+)
+from zeno.email.templates import (
+    password_reset_email,
+    email_verification_email,
+    welcome_email,
+)
+```
 
 * **`backends.py`** — `EmailMessage` dataclass (`to`, `subject`, `html_body`, `text_body`, `from_address`). `EmailBackend` ABC with a single abstract method `send(message)`. `ConsoleEmailBackend` — zero-dependency development fallback that logs email content to the server log; used automatically when no backend is configured.
 * **`smtp.py`** — `SMTPBackend` — async SMTP delivery via `aiosmtplib` (lazy import; raises `ImportError` with install instructions if missing). Builds `multipart/alternative` MIME messages (plain text first, HTML second per RFC 2046). Retry logic classifies errors as **permanent** (`SMTPAuthenticationError`, `SMTPRecipientsRefused`, `SMTPSenderRefused` — re-raised immediately) or **transient** (exponential back-off with `asyncio.sleep`). Ships with seven provider preset classmethods: `.gmail()`, `.sendgrid()`, `.ses()`, `.mailgun()`, `.mailtrap()`, `.postmark()`, `.resend()`. All presets use STARTTLS on port 587 except Resend (implicit TLS, port 465).
@@ -205,6 +410,15 @@ Zeno's database layer is fully pluggable, mirroring the same backend-ABC pattern
 
 ### 8. Cache Subsystem (`src/zeno/cache/`)
 
+**Public API:**
+```python
+from zeno.cache import (
+    CacheBackend,          # ABC
+    MemoryCacheBackend,   # In-memory cache
+    RedisCacheBackend,    # Redis-backed cache
+)
+```
+
 * **`redis_client.py`** — Shared lazy async Redis client singleton. Created once on first use and reused across cache, rate-limit, and realtime broker subsystems. Closed during `app:shutdown`.
 * **`backends.py`** — `CacheBackend` ABC with two built-in implementations: `MemoryCacheBackend` (dict + asyncio timers, zero-dependency) and `RedisCacheBackend` (Redis-backed, multi-process safe). Custom backends subclass `CacheBackend`.
 * **`middleware.py`** — `CacheMiddleware` implements the cache-aside pattern for collection GET requests. Per-user key segmentation prevents RBAC leaks. Adds `X-Cache: HIT/MISS` headers. Fail-open on backend errors.
@@ -212,10 +426,30 @@ Zeno's database layer is fully pluggable, mirroring the same backend-ABC pattern
 
 ### 9. Rate-Limit Subsystem (`src/zeno/ratelimit/`)
 
+**Public API:**
+```python
+from zeno.ratelimit import (
+    RateLimitBackend,          # ABC
+    MemoryRateLimitBackend,   # In-memory rate limiter
+    RedisRateLimitBackend,    # Redis-backed rate limiter
+    RateLimitRule,            # Per-route rule
+)
+```
+
 * **`backends.py`** — `RateLimitBackend` ABC with `MemoryRateLimitBackend` (sliding-window deque) and `RedisRateLimitBackend` (atomic Lua script token bucket, race-condition safe across workers).
 * **`middleware.py`** — `RateLimitMiddleware` returns `429 Too Many Requests` with `Retry-After`, `X-RateLimit-Limit/Remaining/Reset` headers. Supports global defaults and per-route `RateLimitRule` overrides. Fail-open on backend errors.
 
 ### 10. Realtime Subsystem (`src/zeno/realtime/`)
+
+**Public API:**
+```python
+from zeno.realtime import (
+    RealtimeBroker,      # Default in-process broker
+    BrokerProtocol,     # Protocol for custom brokers
+    RedisBroker,        # Redis pub/sub broker
+    Subscription,        # Realtime subscription
+)
+```
 
 * **`broker.py`** — Defines `BrokerProtocol` (a `typing.Protocol`) and `RealtimeBroker` — the default in-process fan-out pub/sub. The protocol ensures custom brokers are type-checkable drop-ins.
 * **`redis_broker.py`** — `RedisBroker` — a `BrokerProtocol`-satisfying Redis pub/sub implementation. Activated via `ZENO_REALTIME_BROKER=redis` or `app.configure_redis(url=...)`. RBAC filtering is applied locally after receiving from Redis.
@@ -226,6 +460,21 @@ Zeno's database layer is fully pluggable, mirroring the same backend-ABC pattern
 * **`auth_filter.py`** — Applies RBAC filtering during broadcast, preventing clients from receiving data they shouldn't see.
 
 ### 11. Migrations Subsystem (`src/zeno/migrations/`)
+
+**Public API:**
+```python
+from zeno.migrations import (
+    MigrationEngine,    # Migration runner
+    MigrationFile,      # Migration file metadata
+    SchemaComparator,   # Schema diff tool
+    AddTable,          # Migration operation
+    AddColumn,         # Migration operation
+    DropColumn,        # Migration operation
+    generate_migration_id,
+    generate_migration_content,
+    write_migration_file,
+)
+```
 
 CLI-driven, explicit schema migration system that coexists with the existing `sync_schema()` auto-sync. Auto-sync continues to handle additive changes (new tables, new columns) on every startup. Migration files handle version-tracked, complex operations that auto-sync cannot: indexes, data transforms, column drops, renames, and any change requiring an audit trail.
 
@@ -305,5 +554,169 @@ The test suite lives in `tests/` and is run with `pytest`. All async tests use `
 4. **Non-Blocking by Default** — Email dispatch uses `asyncio.create_task`; storage operations on remote backends run in thread executors; cache and rate-limit failures are fail-open. No user-facing request is blocked by infrastructure.
 5. **Reactive by Default** — Hooking the Collections pipeline to the Realtime Broker via the Bridge means any mutation on a Collection accurately emits an event to subscribed frontend clients.
 6. **Minimal Dependency Footprint** — Core Zeno uses standard libraries, SQLite, and an ASGI server. S3 support (`boto3`), email delivery (`aiosmtplib`), Redis (`redis`), PostgreSQL (`asyncpg`), and MySQL (`aiomysql`) are all optional extras that are lazily imported with clear `ImportError` messages. SQLite-only users never need any database driver installed beyond the built-in `aiosqlite`.
+
+---
+
+## Environment Variables Reference
+
+| Variable | Description | Default | Example |
+|----------|-------------|---------|---------|
+| `ZENO_SECRET` | JWT signing secret (required for auth) | — | `openssl rand -hex 32` |
+| `ZENO_DATABASE_URL` | Database connection URL | `app.db` (SQLite) | `postgresql://user:pass@localhost/db` |
+| `ZENO_REDIS_URL` | Redis connection URL | — | `redis://localhost:6379/0` |
+| `ZENO_REALTIME_BROKER` | Realtime broker type | `inprocess` | `redis` |
+| `DATABASE_URL` | Fallback database URL (PaaS compatibility) | `app.db` | `postgres://...` |
+| `REDIS_URL` | Fallback Redis URL (PaaS compatibility) | — | `redis://...` |
+| `ZENO_CACHE_ENABLED` | Enable/disable caching | `true` | `false` |
+| `ZENO_RATE_LIMIT_ENABLED` | Enable/disable rate limiting | `true` | `false` |
+
+### Database URL Formats
+
+| Database | URL Format | Optional Extra |
+|----------|------------|----------------|
+| SQLite | `app.db` or `sqlite:///path/to/db.sqlite` | — |
+| PostgreSQL | `postgresql://user:pass@host:5432/db` | `zeno[postgres]` |
+| MySQL | `mysql://user:pass@host:3306/db` | `zeno[mysql]` |
+
+### PostgreSQL Pool Settings
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ZENO_DB_POOL_MIN` | Minimum pool connections | `1` |
+| `ZENO_DB_POOL_MAX` | Maximum pool connections | `10` |
+| `ZENO_DB_TIMEOUT` | Connection timeout (seconds) | `30` |
+| `ZENO_DB_CONNECT_TIMEOUT` | Connect timeout (seconds) | `10` |
+
+---
+
+## Quick Reference
+
+### Minimal App
+
+```python
+from zeno import Zeno, Collection, TextField
+
+app = Zeno()
+
+posts = Collection("posts", fields=[
+    TextField("title", required=True),
+    TextField("body"),
+])
+
+app.register(posts)
+app.serve()
+```
+
+### Full App with Auth
+
+```python
+from zeno import Zeno, Collection, TextField, IntField, Auth
+
+app = Zeno(database="app.db")
+
+posts = Collection("posts", fields=[
+    TextField("title", required=True),
+    TextField("body"),
+    IntField("views", default=0),
+])
+
+auth = Auth(
+    token_expiry=86400,
+    allow_registration=True,
+)
+
+app.register(posts, auth=["read:public", "write:authenticated"])
+app.use_auth(auth)
+app.serve()
+```
+
+### App with Database Selection
+
+```python
+# SQLite (default)
+app = Zeno(database="app.db")
+
+# PostgreSQL
+app = Zeno(database="postgresql://user:pass@localhost:5432/mydb")
+
+# MySQL
+app = Zeno(database="mysql://user:pass@localhost:3306/mydb")
+```
+
+### App with Redis
+
+```python
+# In-process broker (default)
+app = Zeno()
+
+# Redis broker for multi-process
+app = Zeno(redis_url="redis://localhost:6379/0")
+```
+
+### App with S3 Storage
+
+```python
+from zeno import Zeno
+from zeno.storage import S3CompatibleBackend
+
+app = Zeno()
+app.configure_storage(S3CompatibleBackend.aws(
+    bucket="my-bucket",
+    aws_access_key_id="...",
+    aws_secret_access_key="...",
+))
+```
+
+### App with Email
+
+```python
+from zeno import Zeno
+from zeno.email import SMTPBackend
+
+app = Zeno()
+app.email.use(
+    SMTPBackend.gmail(
+        username="noreply@example.com",
+        password="app-password",
+    ),
+    sender="noreply@example.com",
+    app_name="MyApp",
+    base_url="https://myapp.com",
+)
+```
+
+### CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `zeno serve main.py` | Start the development server |
+| `zeno generate-secret` | Generate a secure secret key |
+| `zeno migrate create <name>` | Create a new migration |
+| `zeno migrate run` | Run pending migrations |
+| `zeno migrate rollback` | Rollback the last migration |
+| `zeno migrate status` | Show migration status |
+| `zeno doctor` | Check app configuration |
+| `zeno routes` | List all registered routes |
+| `zeno deploy <platform>` | Generate deployment config |
+
+### Auth Rule Syntax
+
+| Rule | Description |
+|------|-------------|
+| `public` | No authentication required |
+| `authenticated` | Any logged-in user |
+| `role:admin` | Users with specific role |
+| `owner` | Record owner only |
+
+### Hook Event Names
+
+| Event | When Called |
+|-------|-------------|
+| `before_create` | Before creating a record |
+| `after_create` | After creating a record |
+| `before_update` | Before updating a record |
+| `after_update` | After updating a record |
+| `before_delete` | Before deleting a record |
+| `after_delete` | After deleting a record |
 
 (End of file - total 307 lines)
