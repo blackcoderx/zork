@@ -1,6 +1,8 @@
-import pytest
 import asyncio
+
+import pytest
 from typer.testing import CliRunner
+
 from zeno.cli import app
 
 runner = CliRunner()
@@ -25,8 +27,8 @@ class TestInit:
 
 class TestPromote:
     def test_promote_user(self, db_path):
-        from zeno.db.connection import Database
         from zeno.auth.models import create_auth_tables
+        from zeno.db.connection import Database
 
         async def setup():
             db = Database(db_path)
@@ -41,8 +43,8 @@ class TestPromote:
 
         asyncio.run(setup())
 
-        result = runner.invoke(app, [
-            "promote", "admin@test.com", "--role", "admin", "--database", db_path
-        ])
+        result = runner.invoke(
+            app, ["promote", "admin@test.com", "--role", "admin", "--database", db_path]
+        )
         assert result.exit_code == 0
         assert "admin" in result.stdout.lower()

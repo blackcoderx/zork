@@ -9,7 +9,6 @@ from zeno.auth.routes import build_auth_routes
 from zeno.db.connection import Database
 from zeno.pipeline import build_middleware_stack
 
-
 SECRET = "test-secret-for-auth-tests"
 
 
@@ -30,10 +29,13 @@ async def auth_app(db_path):
 
 
 def register_user(client, email="test@example.com", password="password123"):
-    return client.post("/api/auth/register", json={
-        "email": email,
-        "password": password,
-    })
+    return client.post(
+        "/api/auth/register",
+        json={
+            "email": email,
+            "password": password,
+        },
+    )
 
 
 class TestRegister:
@@ -76,10 +78,13 @@ class TestLogin:
     async def test_login_success(self, auth_app):
         client, db, auth = auth_app
         register_user(client)
-        resp = client.post("/api/auth/login", json={
-            "email": "test@example.com",
-            "password": "password123",
-        })
+        resp = client.post(
+            "/api/auth/login",
+            json={
+                "email": "test@example.com",
+                "password": "password123",
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert "token" in data
@@ -89,30 +94,41 @@ class TestLogin:
     async def test_login_wrong_password(self, auth_app):
         client, db, auth = auth_app
         register_user(client)
-        resp = client.post("/api/auth/login", json={
-            "email": "test@example.com",
-            "password": "wrongpassword",
-        })
+        resp = client.post(
+            "/api/auth/login",
+            json={
+                "email": "test@example.com",
+                "password": "wrongpassword",
+            },
+        )
         assert resp.status_code == 401
 
     @pytest.mark.asyncio
     async def test_login_nonexistent_user(self, auth_app):
         client, db, auth = auth_app
-        resp = client.post("/api/auth/login", json={
-            "email": "nobody@example.com",
-            "password": "password123",
-        })
+        resp = client.post(
+            "/api/auth/login",
+            json={
+                "email": "nobody@example.com",
+                "password": "password123",
+            },
+        )
         assert resp.status_code == 401
 
     @pytest.mark.asyncio
     async def test_login_inactive_user(self, auth_app):
         client, db, auth = auth_app
         register_user(client)
-        await db.execute("UPDATE _users SET is_active = 0 WHERE email = ?", ("test@example.com",))
-        resp = client.post("/api/auth/login", json={
-            "email": "test@example.com",
-            "password": "password123",
-        })
+        await db.execute(
+            "UPDATE _users SET is_active = 0 WHERE email = ?", ("test@example.com",)
+        )
+        resp = client.post(
+            "/api/auth/login",
+            json={
+                "email": "test@example.com",
+                "password": "password123",
+            },
+        )
         assert resp.status_code == 403
 
 
@@ -140,7 +156,9 @@ class TestLogout:
         client, db, auth = auth_app
         reg = register_user(client).json()
         token = reg["token"]
-        resp = client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
+        resp = client.post(
+            "/api/auth/logout", headers={"Authorization": f"Bearer {token}"}
+        )
         assert resp.status_code == 200
         resp2 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
         assert resp2.status_code == 401
@@ -152,11 +170,17 @@ class TestRefresh:
         client, db, auth = auth_app
         reg = register_user(client).json()
         old_token = reg["token"]
-        resp = client.post("/api/auth/refresh", headers={"Authorization": f"Bearer {old_token}"})
+        resp = client.post(
+            "/api/auth/refresh", headers={"Authorization": f"Bearer {old_token}"}
+        )
         assert resp.status_code == 200
         new_token = resp.json()["token"]
         assert new_token != old_token
-        resp2 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {old_token}"})
+        resp2 = client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {old_token}"}
+        )
         assert resp2.status_code == 401
-        resp3 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {new_token}"})
+        resp3 = client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {new_token}"}
+        )
         assert resp3.status_code == 200

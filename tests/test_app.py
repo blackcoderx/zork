@@ -2,19 +2,22 @@ import pytest
 from starlette.testclient import TestClient
 
 from zeno.app import Zeno
-from zeno.collections.schema import Collection, TextField, IntField
 from zeno.auth import Auth
+from zeno.collections.schema import Collection, IntField, TextField
 
 
 @pytest.fixture
 def app(db_path):
     zeno = Zeno(database=db_path)
 
-    posts = Collection("posts", fields=[
-        TextField("title", required=True),
-        TextField("body"),
-        IntField("views", default=0),
-    ])
+    posts = Collection(
+        "posts",
+        fields=[
+            TextField("title", required=True),
+            TextField("body"),
+            IntField("views", default=0),
+        ],
+    )
     zeno.register(posts, auth=["read:public", "write:public"])
     return zeno
 
@@ -23,9 +26,12 @@ def app(db_path):
 def app_with_auth(db_path):
     zeno = Zeno(database=db_path)
 
-    posts = Collection("posts", fields=[
-        TextField("title", required=True),
-    ])
+    posts = Collection(
+        "posts",
+        fields=[
+            TextField("title", required=True),
+        ],
+    )
     auth = Auth(token_expiry=3600, allow_registration=True)
 
     zeno.register(posts, auth=["read:public", "write:authenticated"])
@@ -61,10 +67,13 @@ class TestZenoWithAuth:
         starlette_app = app_with_auth.build()
         client = TestClient(starlette_app)
 
-        resp = client.post("/api/auth/register", json={
-            "email": "test@test.com",
-            "password": "password123",
-        })
+        resp = client.post(
+            "/api/auth/register",
+            json={
+                "email": "test@test.com",
+                "password": "password123",
+            },
+        )
         assert resp.status_code == 201
         token = resp.json()["token"]
 
@@ -82,10 +91,13 @@ class TestZenoWithAuth:
         starlette_app = app_with_auth.build()
         client = TestClient(starlette_app)
 
-        reg = client.post("/api/auth/register", json={
-            "email": "writer@test.com",
-            "password": "password123",
-        }).json()
+        reg = client.post(
+            "/api/auth/register",
+            json={
+                "email": "writer@test.com",
+                "password": "password123",
+            },
+        ).json()
         token = reg["token"]
 
         resp = client.post(

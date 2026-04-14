@@ -11,6 +11,7 @@ def db_path(tmp_path):
 async def mem_db():
     """In-memory SQLite database for unit tests."""
     from zeno.db.connection import Database
+
     db = Database(":memory:")
     await db.connect()
     yield db

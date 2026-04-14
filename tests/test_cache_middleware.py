@@ -1,5 +1,7 @@
 """Tests for CacheMiddleware: cache-aside behavior, headers, exclusions."""
+
 import json
+
 import pytest
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -33,7 +35,9 @@ def build_app(backend, excluded_paths=None, per_user=True):
         Route("/api/posts/{id}", get_post, methods=["GET"]),
     ]
     app = Starlette(routes=routes)
-    app = CacheMiddleware(app, backend, excluded_paths=excluded_paths, per_user=per_user)
+    app = CacheMiddleware(
+        app, backend, excluded_paths=excluded_paths, per_user=per_user
+    )
     return app, call_count
 
 

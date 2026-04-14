@@ -1,12 +1,15 @@
 """Tests for cache backends: MemoryCacheBackend and RedisCacheBackend."""
-import asyncio
-import pytest
-from zeno.cache.backends import MemoryCacheBackend, RedisCacheBackend
 
+import asyncio
+
+import pytest
+
+from zeno.cache.backends import MemoryCacheBackend, RedisCacheBackend
 
 # ---------------------------------------------------------------------------
 # MemoryCacheBackend
 # ---------------------------------------------------------------------------
+
 
 class TestMemoryCacheBackend:
     @pytest.fixture
@@ -72,6 +75,7 @@ class TestMemoryCacheBackend:
 # RedisCacheBackend (using fakeredis)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def fake_redis_client():
     try:
@@ -85,8 +89,10 @@ class TestRedisCacheBackend:
     @pytest.fixture(autouse=True)
     def patch_redis(self, monkeypatch, fake_redis_client):
         """Patch _redis() on all RedisCacheBackend instances."""
+
         async def _r(self):
             return fake_redis_client
+
         monkeypatch.setattr(RedisCacheBackend, "_redis", _r)
 
     @pytest.fixture

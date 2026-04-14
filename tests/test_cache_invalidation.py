@@ -1,10 +1,12 @@
 """Tests for tag-based cache invalidation."""
+
 import pytest
+
 from zeno.cache.backends import MemoryCacheBackend
-from zeno.cache.invalidation import install_invalidation, _list_tag, _get_key
+from zeno.cache.invalidation import _get_key, _list_tag, install_invalidation
+from zeno.hooks.context import ZenoContext
 from zeno.hooks.registry import HookRegistry
 from zeno.hooks.runner import HookRunner
-from zeno.hooks.context import ZenoContext
 
 
 @pytest.fixture

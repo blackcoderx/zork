@@ -5,11 +5,10 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from zeno.auth.models import create_auth_tables, block_token
+from zeno.auth.models import block_token, create_auth_tables
 from zeno.auth.tokens import create_token, decode_token
 from zeno.db.connection import Database
-from zeno.pipeline import build_middleware_stack, AuthMiddleware
-
+from zeno.pipeline import AuthMiddleware, build_middleware_stack
 
 SECRET = "test-middleware-secret"
 
