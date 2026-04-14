@@ -7,16 +7,17 @@ from datetime import datetime, timezone
 from typing import Any
 
 from cinder.collections.schema import (
-    Collection,
     BoolField,
+    Collection,
     DateTimeField,
     FileField,
     JSONField,
 )
-from cinder.db.backends.base import DatabaseIntegrityError
-from cinder.db.connection import Database
-from cinder.errors import CANCEL_DELETE_MESSAGE, CinderError
-from cinder.hooks.context import CinderContext
+
+from zeno.db.backends.base import DatabaseIntegrityError
+from zeno.db.connection import Database
+from zeno.errors import CANCEL_DELETE_MESSAGE, ZenoError
+from zeno.hooks.context import CinderContext
 
 logger = logging.getLogger("cinder.collections.store")
 
@@ -101,7 +102,7 @@ class CollectionStore:
                 values,
             )
         except DatabaseIntegrityError as exc:
-            raise CinderError(400, str(exc)) from exc
+            raise ZenoError(400, str(exc)) from exc
 
         saved = self._deserialize(collection, record)
         await collection._runner.run(f"{collection.name}:after_create", saved, ctx)
@@ -245,7 +246,7 @@ class CollectionStore:
                 tuple(params),
             )
         except DatabaseIntegrityError as exc:
-            raise CinderError(400, str(exc)) from exc
+            raise ZenoError(400, str(exc)) from exc
 
         updated = await self._raw_get(collection, id)
         await collection._runner.run(
@@ -264,7 +265,7 @@ class CollectionStore:
             await collection._runner.run(
                 f"{collection.name}:before_delete", existing, ctx
             )
-        except CinderError as e:
+        except ZenoError as e:
             if e.message == CANCEL_DELETE_MESSAGE:
                 # Soft-delete / handled manually — skip the DB delete but
                 # report success to the caller.
