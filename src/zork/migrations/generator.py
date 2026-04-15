@@ -1,7 +1,8 @@
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from .diff import AddTable, AddColumn, DropColumn, AddIndex, DropIndex
+
+from .diff import AddColumn, AddIndex, AddTable, DropColumn, DropIndex
 
 
 def generate_migration_id(name: str) -> str:
@@ -31,7 +32,7 @@ def generate_migration_content(operations: list | None = None, name: str = "") -
             up_lines.append(
                 f'    await db.execute("ALTER TABLE {op.table} ADD COLUMN {op.col_sql}")'
             )
-            down_lines.append(f"    # DROP COLUMN not supported on SQLite < 3.35.0")
+            down_lines.append("# DROP COLUMN not supported on SQLite < 3.35.0")
             down_lines.append(
                 f'    # await db.execute("ALTER TABLE {op.table} DROP COLUMN {op.field_name}")'
             )
