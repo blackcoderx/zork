@@ -120,7 +120,7 @@ You now have:
 
 ## Documentation
 
-Full documentation at **[zorkapi.vercel.app](https://zorkapi.vercel.app)**
+Full documentation at **[docs](https://github.com/blackcoderx/zork/tree/main/docs)**
 
 ## License
 
