@@ -190,15 +190,58 @@ export DATABASE_URL=postgresql://user:pass@host:5432/prod
 
 ## Schema Auto-Sync
 
-When your application starts, Zork automatically syncs the database schema with your collection definitions:
+When your application starts, Zork can automatically sync the database schema with your collection definitions.
 
-- New tables are created
-- New columns are added to existing tables
-- Existing columns and data are preserved
+### Default Behavior
 
-This makes development easier without migrations for simple changes.
+| Database | Auto-Sync Default |
+|----------|------------------|
+| SQLite | Enabled |
+| PostgreSQL | Disabled |
+| MySQL | Disabled |
 
-For complex schema changes (dropping columns, creating indexes), use the [Migrations](/database/migrations) system.
+This means:
+
+- SQLite development works without configuration
+- PostgreSQL and MySQL require explicit migrations
+
+### Configuration
+
+To disable auto-sync for production:
+
+```python
+app = Zork(database="postgresql://...", auto_sync=False)
+```
+
+Or via environment variable:
+
+```bash
+ZORK_AUTO_SYNC=false
+```
+
+### When to Use
+
+**Use auto-sync for:**
+
+- Local development with SQLite
+- Rapid prototyping
+- Initial project setup
+
+**Use migrations for:**
+
+- Production databases
+- Team development
+- Any database with valuable data
+
+### Previewing Changes
+
+Before deploying, preview schema changes:
+
+```bash
+zork schema diff --app main.py
+```
+
+See [Schema Safety](/database/schema-safety) for the full guide.
 
 ## Checking Database Connectivity
 
@@ -216,5 +259,6 @@ Example output:
 
 ## Next Steps
 
+- [Schema Safety](/database/schema-safety) — Understanding schema management
 - [Migrations](/database/migrations) — Managing schema changes
 - [File Storage](/file-storage/setup) — Storing uploaded files

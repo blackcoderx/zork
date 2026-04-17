@@ -164,11 +164,34 @@ In this quick start, you created a Zork application that includes:
 
 - **Automatic database table creation** — The `posts` collection automatically created a table with `id`, `title`, `body`, `views`, `created_at`, and `updated_at` columns.
 
+- **Schema auto-sync** — As you add fields to your collections, Zork automatically updates the database schema. This makes development fast and frictionless.
+
 - **JWT authentication** — The `Auth` class set up user registration, login, and token management with secure JWT tokens.
 
 - **Access control** — The `auth` parameter on `app.register()` protected write operations so only authenticated users can create posts.
 
 - **RESTful endpoints** — All CRUD operations are available at predictable URL patterns following REST conventions.
+
+## Development vs Production
+
+### Development (Auto-Sync)
+
+With SQLite, Zork automatically syncs your schema on startup. This means:
+
+- Add a field → column appears immediately
+- Start the server → tables are created
+- Perfect for rapid iteration
+
+### Production (Migrations)
+
+When you move to production with PostgreSQL or MySQL:
+
+- Schema auto-sync is disabled by default
+- Use migrations for all schema changes
+- Preview changes with `zork schema diff`
+- Generate migrations with `zork migrate sync`
+
+See [Schema Safety](/database/schema-safety) for the full guide.
 
 ## Next Steps
 

@@ -215,15 +215,79 @@ The same migration should not be applied twice. Zork tracks applied migrations a
 
 ## Auto-Sync vs Migrations
 
-| Feature | Auto-Sync | Migrations |
-|---------|-----------|------------|
-| Add tables | Yes | Yes |
-| Add columns | Yes | Yes |
-| Drop columns | No | Yes |
-| Create indexes | No | Yes |
-| Rename columns | No | Yes |
-| Data transforms | No | Yes |
-| Requires explicit tracking | No | Yes |
+Zork supports two approaches to schema management:
+
+### Auto-Sync (Development)
+
+Auto-sync is convenient for local development:
+
+| Feature | Auto-Sync |
+|---------|-----------|
+| Add tables | Automatic |
+| Add columns | Automatic |
+| Drop columns | Manual (use migrations) |
+| Rename columns | Manual (use migrations) |
+| Create indexes | Automatic |
+
+**When to use:** Local development only, when database is not critical.
+
+**Risks:**
+
+- Typos create new columns instead of fixing existing ones
+- Orphaned columns accumulate over time
+- No version history of changes
+- Dangerous in production with real data
+
+### Migrations (Recommended)
+
+Migrations provide explicit, version-controlled schema changes:
+
+| Feature | Migrations |
+|---------|-----------|
+| Add tables | Manual |
+| Add columns | Manual |
+| Drop columns | Manual |
+| Rename columns | Manual |
+| Create indexes | Manual |
+| Data transforms | Manual |
+| Version history | Yes |
+
+**When to use:** Production environments, team development, any database with valuable data.
+
+### Recommended Workflow
+
+1. **Development:** Use auto-sync for rapid iteration
+2. **Before production:** Run `zork schema diff` to review changes
+3. **Convert to migrations:** Run `zork migrate sync` to create migration files
+4. **Production:** Disable auto-sync, use migrations only
+
+### Enabling Production Mode
+
+```python
+# Option 1: Environment variable
+ZORK_AUTO_SYNC=false
+
+# Option 2: App configuration
+app = Zork(database="postgresql://...", auto_sync=False)
+```
+
+### Quick Migration Workflow
+
+```bash
+# 1. Make schema changes to your collections
+
+# 2. Preview what will change
+zork schema diff --app main.py
+
+# 3. Convert changes to migrations
+zork migrate sync --app main.py
+
+# 4. Review generated migrations
+cat migrations/20260416_120000_*.py
+
+# 5. Run migrations
+zork migrate run --app main.py
+```
 
 ## Best Practices
 
@@ -260,4 +324,4 @@ async def up(db):
 ## Next Steps
 
 - [Database Overview](/database/overview) — Database configuration
-- [Schema Auto-Sync](/core-concepts/collections) — Automatic schema updates
+- [Schema Safety](/database/schema-safety) — Understanding schema management best practices

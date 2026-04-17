@@ -138,13 +138,80 @@ async def notify_new_article(article, ctx):
 
 See the [Lifecycle Hooks](/core-concepts/lifecycle-hooks) guide for all available events.
 
-## Schema Auto-Sync
+## Schema Management
 
-When your application starts, Zork compares your collection definition against the live database schema. If the database is missing columns, Zork adds them automatically.
+Zork offers two modes for managing database schema changes: auto-sync for rapid development, and migrations for controlled production deployments.
 
-This means you can add new fields to your collections and Zork will update the database schema on startup.
+### Development Mode (Auto-Sync)
 
-For more complex schema changes like dropping columns or creating indexes, use the [Migrations](/database/migrations) system.
+In development, Zork automatically syncs your collection definitions with the database:
+
+- New tables are created automatically
+- Missing columns are added on startup
+- Indexes are created automatically
+
+This is convenient for rapid development but requires caution in production.
+
+### Production Mode (Migrations)
+
+For production environments, disable auto-sync and use explicit migrations:
+
+```python
+app = Zork(
+    database="postgresql://user:pass@host:5432/mydb",
+    auto_sync=False,
+)
+```
+
+Or via environment variable:
+
+```bash
+ZORK_AUTO_SYNC=false
+```
+
+### Previewing Schema Changes
+
+Before applying changes, preview what will be different:
+
+```bash
+zork schema diff --app main.py
+```
+
+This shows:
+
+- Columns that would be added
+- Columns that exist but are not in your schema
+- Potential typos detected
+- Indexes that would be created
+
+### Converting to Migrations
+
+Convert auto-sync decisions to migration files:
+
+```bash
+zork migrate sync --app main.py
+```
+
+This creates proper migration files that you can review and commit.
+
+### Safety Warnings
+
+Zork detects potential issues:
+
+| Warning | Meaning |
+|---------|---------|
+| `Possible typo detected` | Column name looks similar to an orphan column |
+| `Orphan column exists` | Column in DB not in your schema |
+
+### When to Use Migrations
+
+Always use migrations for:
+
+- Renaming columns
+- Changing column types
+- Dropping columns
+- Complex data transforms
+- Production deployments
 
 ## Example: Blog Collections
 
