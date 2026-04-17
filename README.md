@@ -119,6 +119,28 @@ You now have:
 - One-command deployment — generate Docker, Railway, Render, and Fly.io configs with `zork deploy`
 - Auto-generated OpenAPI 3.1 + Swagger UI
 - Zero boilerplate — one file to a working API
+- Configurable CORS — secure defaults, opt-in with specific origins
+
+## CORS Configuration
+
+By default, CORS is disabled (secure). Enable it with specific origins:
+
+```python
+from zork import Zork
+
+# Constructor (recommended)
+app = Zork(
+    database="app.db",
+    cors_allow_origins=["https://myapp.com"],
+    cors_allow_credentials=True,
+)
+
+# Or fluent API
+app = Zork(database="app.db")
+app.cors.allow_origins(["https://myapp.com"])
+```
+
+**Security:** Never use `allow_origins=["*"]` with `allow_credentials=True`. Zork logs a warning if you do.
 
 ## Documentation
 
