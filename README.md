@@ -106,6 +106,8 @@ You now have:
 - HTTP-only cookie delivery with CSRF protection
 - Refresh token rotation with automatic blocklist (Redis or database)
 - Multi-database support — SQLite, PostgreSQL, MySQL
+- Schema safety — auto-sync for dev, migrations for production
+- Schema diff and migration sync commands
 - Realtime via WebSocket and Server-Sent Events
 - File storage — local filesystem or S3-compatible (AWS, R2, MinIO, and more)
 - Lifecycle hooks — `before_create`, `after_update`, `before_delete`, etc.
