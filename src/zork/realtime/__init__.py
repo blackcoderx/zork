@@ -114,12 +114,13 @@ class RealtimeFacade:
     # Internal: called from Zork.build()
     # ------------------------------------------------------------------
 
-    def _build_routes(self, db, secret: str) -> list:
+    def _build_routes(self, db, secret: str, prefix: str | None = None) -> list:
         """Return the list of Starlette routes for the realtime layer."""
+        realtime_prefix = f"{prefix}/realtime" if prefix else "/api/realtime"
         routes = [
-            WebSocketRoute("/api/realtime", ws_endpoint_factory(self, db, secret)),
+            WebSocketRoute(realtime_prefix, ws_endpoint_factory(self, db, secret)),
             Route(
-                "/api/realtime/sse",
+                f"{realtime_prefix}/sse",
                 sse_endpoint_factory(self, db, secret),
                 methods=["GET"],
             ),

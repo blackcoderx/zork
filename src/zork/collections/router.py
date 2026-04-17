@@ -15,12 +15,27 @@ def build_collection_routes(
     collections: dict[str, tuple[Collection, dict[str, str]]],
     store: CollectionStore,
     storage_backend=None,
+    prefix: str | None = None,
 ) -> list[Route]:
+    """Build routes for all collections.
+
+    Args:
+        collections: Dict of collection name -> (Collection, auth_rules)
+        store: CollectionStore instance
+        storage_backend: Optional storage backend for FileField
+        prefix: URL prefix for routes (e.g., "/api/v1"). If None, uses "/api".
+    """
+    route_prefix = prefix or "/api"
     routes: list[Route] = []
     for name, (collection, auth_rules) in collections.items():
         routes.extend(
             _routes_for_collection(
-                collection, auth_rules, store, collections, storage_backend
+                collection,
+                auth_rules,
+                store,
+                collections,
+                storage_backend,
+                route_prefix,
             )
         )
     return routes
@@ -56,6 +71,7 @@ def _routes_for_collection(
     store: CollectionStore,
     all_collections: dict[str, tuple[Collection, dict[str, str]]],
     storage_backend=None,
+    prefix: str = "/api",
 ) -> list[Route]:
     read_rule = auth_rules.get("read", "public")
     write_rule = auth_rules.get("write", "public")
@@ -175,12 +191,15 @@ def _routes_for_collection(
             raise ZorkError(404, "Record not found")
         return JSONResponse({"message": "Record deleted"})
 
+    collection_path = f"{prefix}/{collection.name}"
+    id_path = f"{prefix}/{collection.name}/{{id}}"
+
     routes = [
-        Route(f"/api/{collection.name}", list_records, methods=["GET"]),
-        Route(f"/api/{collection.name}/{{id}}", get_record, methods=["GET"]),
-        Route(f"/api/{collection.name}", create_record, methods=["POST"]),
-        Route(f"/api/{collection.name}/{{id}}", update_record, methods=["PATCH"]),
-        Route(f"/api/{collection.name}/{{id}}", delete_record, methods=["DELETE"]),
+        Route(collection_path, list_records, methods=["GET"]),
+        Route(id_path, get_record, methods=["GET"]),
+        Route(collection_path, create_record, methods=["POST"]),
+        Route(id_path, update_record, methods=["PATCH"]),
+        Route(id_path, delete_record, methods=["DELETE"]),
     ]
 
     # Auto-generate file routes for every FileField on this collection
@@ -194,7 +213,7 @@ def _routes_for_collection(
         for field in collection.fields:
             if isinstance(field, FileField):
                 field_name = field.name
-                path = f"/api/{collection.name}/{{id}}/files/{field_name}"
+                path = f"{prefix}/{collection.name}/{{id}}/files/{field_name}"
                 routes.extend(
                     [
                         Route(

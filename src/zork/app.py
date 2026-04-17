@@ -500,16 +500,22 @@ class Zork:
         database: str = "app.db",
         *,
         title: str = "Zork API",
-        version: str = "1.0.0",
+        api_version: str = "1.0.0",
         auto_sync: bool | None = None,
         cors_allow_origins: list[str] | None = None,
         cors_allow_credentials: bool = False,
         cors_allow_methods: list[str] | None = None,
         cors_allow_headers: list[str] | None = None,
+        version: str | None = None,
+        version_prefix: str | None = None,
     ):
         self.database = database
         self.title = title
-        self.version = version
+        self.api_version = api_version  # OpenAPI version
+
+        # API versioning - none by default for backward compatibility
+        self._version = version  # e.g., "v1", "v2"
+        self._version_prefix = version_prefix  # e.g., "/api", "api"
 
         # Auto-sync detection: explicit > env var > detection
         if auto_sync is not None:
@@ -556,6 +562,19 @@ class Zork:
         Can be overridden via constructor or ZORK_AUTO_SYNC env var.
         """
         return self._auto_sync
+
+    @property
+    def version_prefix(self) -> str | None:
+        """Get the URL prefix for versioned routes.
+
+        Returns None if versioning is not enabled.
+        Returns e.g., "/api" or "/api/v1" depending on configuration.
+        """
+        if not self._version:
+            return None
+        prefix = self._version_prefix or "/api"
+        v = self._version if self._version.startswith("v") else f"v{self._version}"
+        return f"{prefix}/{v}"
 
     def configure_database(self, backend) -> "Zork":
         """Plug in a fully pre-configured :class:`~zork.db.backends.base.DatabaseBackend`.
@@ -947,26 +966,39 @@ class Zork:
             return HTMLResponse(html_content)
 
         routes.append(Route("/", index, methods=["GET"]))
-        routes.append(Route("/api/health", health, methods=["GET"]))
+
+        # Build version prefix for routes
+        vprefix = self.version_prefix
+        health_path = f"{vprefix}/health" if vprefix else "/api/health"
+        routes.append(Route(health_path, health, methods=["GET"]))
+
         routes.extend(
             build_collection_routes(
-                collections, store, storage_backend=self._storage_backend
+                collections,
+                store,
+                storage_backend=self._storage_backend,
+                prefix=vprefix or "/api",
             )
         )
 
         if auth:
-            routes.extend(build_auth_routes(auth, db, secret, email_config=self.email))
+            routes.extend(
+                build_auth_routes(
+                    auth, db, secret, email_config=self.email, prefix=vprefix
+                )
+            )
 
         # Install the auto-emit bridge and add realtime routes
         self.realtime._install_bridge(self._registry, collections)
-        routes.extend(self.realtime._build_routes(db, secret))
+        routes.extend(self.realtime._build_routes(db, secret, prefix=vprefix))
 
         # Add OpenAPI/Swagger routes
         from zork.openapi import ZorkOpenAPI
 
         openapi = ZorkOpenAPI(
             title=self.title,
-            version=self.version,
+            version=self.api_version,
+            prefix=vprefix,
             collections=collections,
             auth_enabled=auth is not None,
         )

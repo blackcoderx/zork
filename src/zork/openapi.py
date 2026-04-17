@@ -61,11 +61,13 @@ class ZorkOpenAPI:
         self,
         title: str = "Zork API",
         version: str = "1.0.0",
+        prefix: str | None = None,
         collections: dict[str, tuple[Collection, dict[str, str]]] | None = None,
         auth_enabled: bool = False,
     ) -> None:
         self.title = title
         self.version = version
+        self.prefix = prefix  # URL version prefix (e.g., "/api/v1")
         self.collections = collections or {}
         self.auth_enabled = auth_enabled
 
@@ -891,7 +893,11 @@ class ZorkOpenAPI:
         return HTMLResponse(SWAGGER_HTML.format(title=json.dumps(self.title)[1:-1]))
 
     def build_routes(self) -> list[Route]:
+        # Use prefix for OpenAPI routes if versioning is enabled
+        doc_prefix = self.prefix or ""
         return [
-            Route("/openapi.json", self._get_openapi_json, methods=["GET"]),
-            Route("/docs", self._get_docs, methods=["GET"]),
+            Route(
+                f"{doc_prefix}/openapi.json", self._get_openapi_json, methods=["GET"]
+            ),
+            Route(f"{doc_prefix}/docs", self._get_docs, methods=["GET"]),
         ]

@@ -105,11 +105,14 @@ def _resolve_delivery(auth: Auth) -> TokenDeliveryBackend:
 
 
 def build_auth_routes(
-    auth: Auth, db: Database, secret: str, email_config=None
+    auth: Auth, db: Database, secret: str, email_config=None, prefix: str | None = None
 ) -> list[Route]:  # noqa: ANN001
     runner = auth._runner
     delivery = _resolve_delivery(auth)
     blocklist = _resolve_blocklist(db, auth)
+
+    # Use provided prefix or default "/api"
+    auth_prefix = f"{prefix}/auth" if prefix else "/api/auth"
 
     async def register(request: Request) -> JSONResponse:
         if not auth.allow_registration:
@@ -456,12 +459,12 @@ def build_auth_routes(
         return JSONResponse({"message": "Email verified successfully"})
 
     return [
-        Route("/api/auth/register", register, methods=["POST"]),
-        Route("/api/auth/login", login, methods=["POST"]),
-        Route("/api/auth/logout", logout, methods=["POST"]),
-        Route("/api/auth/me", me, methods=["GET"]),
-        Route("/api/auth/refresh", refresh, methods=["POST"]),
-        Route("/api/auth/forgot-password", forgot_password, methods=["POST"]),
-        Route("/api/auth/reset-password", reset_password, methods=["POST"]),
-        Route("/api/auth/verify-email", verify_email, methods=["GET"]),
+        Route(f"{auth_prefix}/register", register, methods=["POST"]),
+        Route(f"{auth_prefix}/login", login, methods=["POST"]),
+        Route(f"{auth_prefix}/logout", logout, methods=["POST"]),
+        Route(f"{auth_prefix}/me", me, methods=["GET"]),
+        Route(f"{auth_prefix}/refresh", refresh, methods=["POST"]),
+        Route(f"{auth_prefix}/forgot-password", forgot_password, methods=["POST"]),
+        Route(f"{auth_prefix}/reset-password", reset_password, methods=["POST"]),
+        Route(f"{auth_prefix}/verify-email", verify_email, methods=["GET"]),
     ]
