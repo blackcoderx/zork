@@ -6,8 +6,8 @@ import os
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
-from functools import partial
 
+from pydantic import BaseModel
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
@@ -466,8 +466,55 @@ class _AppHooks:
                 return fn
 
             return decorator
+
         self._registry.on(event, handler)
         return handler
+
+    def route(
+        self,
+        path: str,
+        methods: list[str] | None = None,
+    ):
+        """Decorator for adding custom routes to the app.
+
+        This method creates a Starlette route that can be used with the
+        @app.response() decorator for response transformation.
+
+        Args:
+            path: URL path, can include path parameters like "/posts/{id}"
+            methods: HTTP methods to handle. Defaults to ["GET"].
+
+        Returns:
+            A decorator that registers the route.
+
+        Example::
+
+            from zork import Zork
+            from pydantic import BaseModel
+
+            app = Zork()
+
+            class PostResponse(BaseModel):
+                id: str
+                title: str
+
+            @app.response(PostResponse)
+            @app.route("/posts/{id}")
+            async def get_post(request):
+                post = await db.fetch("SELECT * FROM posts WHERE id = ?",
+                                      [request.path_params["id"]])
+                return post[0] if post else None
+        """
+        if methods is None:
+            methods = ["GET"]
+
+        def decorator(func):
+            route = Route(path, func, methods=methods)
+            self._custom_routes = getattr(self, '_custom_routes', [])
+            self._custom_routes.append(route)
+            return func
+
+        return decorator
 
     async def fire(self, event: str, payload, ctx):
         return await self._runner.fire(event, payload, ctx)
@@ -553,6 +600,8 @@ class Zork:
             self.cors.allow_methods(cors_allow_methods)
         if cors_allow_headers is not None:
             self.cors.allow_headers(cors_allow_headers)
+        # Response model configs for custom routes
+        self._response_configs: dict[str, dict] = {}
 
     @property
     def auto_sync(self) -> bool:
@@ -795,7 +844,9 @@ class Zork:
             return JSONResponse({"status": "ok"})
 
         async def index(request: Request) -> HTMLResponse:
-            html_content = Path(__file__).parent.joinpath("landingpage.html").read_text()
+            html_content = (
+                Path(__file__).parent.joinpath("landingpage.html").read_text()
+            )
             return HTMLResponse(html_content)
 
         routes.append(Route("/", index, methods=["GET"]))
@@ -836,6 +887,12 @@ class Zork:
             auth_enabled=auth is not None,
         )
         routes.extend(openapi.build_routes())
+
+        # Add custom routes registered via @app.route()
+        custom_routes = getattr(self, "_custom_routes", [])
+        if custom_routes:
+            routes.extend(custom_routes)
+            logger.info("Added %d custom route(s)", len(custom_routes))
 
         starlette_app = Starlette(routes=routes, lifespan=lifespan)
 
@@ -899,3 +956,148 @@ class Zork:
 
         app = self.build()
         uvicorn.run(app, host=host, port=port)
+
+    def route(
+        self,
+        path: str,
+        methods: list[str] | None = None,
+    ):
+        """Decorator for adding custom routes to the app.
+
+        This method creates a Starlette route that can be used with the
+        @app.response() decorator for response transformation.
+
+        Args:
+            path: URL path, can include path parameters like "/posts/{id}"
+            methods: HTTP methods to handle. Defaults to ["GET"].
+
+        Returns:
+            A decorator that registers the route.
+
+        Example::
+
+            from zork import Zork
+            from pydantic import BaseModel
+
+            app = Zork()
+
+            class PostResponse(BaseModel):
+                id: str
+                title: str
+
+            @app.response(PostResponse)
+            @app.route("/posts/{id}")
+            async def get_post(request):
+                post = await db.fetch("SELECT * FROM posts WHERE id = ?",
+                                      [request.path_params["id"]])
+                return post[0] if post else None
+        """
+        if methods is None:
+            methods = ["GET"]
+
+        def decorator(func):
+            route = Route(path, func, methods=methods)
+            self._custom_routes = getattr(self, '_custom_routes', [])
+            self._custom_routes.append(route)
+            return func
+
+        return decorator
+
+    def response(
+        self,
+        model: type[BaseModel] | None = None,
+        include: set[str] | None = None,
+        exclude: set[str] | None = None,
+        exclude_none: bool = False,
+        exclude_unset: bool = False,
+        exclude_defaults: bool = False,
+        by_alias: bool = False,
+    ):
+        """Decorator for transforming custom route responses.
+
+        This decorator wraps a route handler to transform its return value
+        through a response model, controlling which fields are included/excluded
+        and how serialization works.
+
+        Args:
+            model: Pydantic BaseModel class for response transformation.
+                Fields in the model will be used to validate and serialize
+                the response. Computed fields can be added via model_validator.
+            include: Set of field names to include in the response.
+            exclude: Set of field names to exclude from the response.
+                Useful for hiding sensitive data.
+            exclude_none: If True, fields with None values are excluded.
+            exclude_unset: If True, fields not explicitly set are excluded.
+            exclude_defaults: If True, fields with default values are excluded.
+            by_alias: If True, use field aliases in output.
+
+        Returns:
+            A decorator that wraps the route handler.
+
+        Example::
+
+            from pydantic import BaseModel
+            from zork import Zork
+
+            app = Zork()
+
+            class PostDetail(BaseModel):
+                id: str
+                title: str
+                slug: str  # computed
+                view_count: int
+
+                @model_validator(mode="before")
+                def compute_slug(cls, data):
+                    if isinstance(data, dict) and "title" in data:
+                        data["slug"] = data["title"].lower().replace(" ", "-")
+                    return data
+
+            @app.response(PostDetail, include={"id", "title", "slug"})
+            @app.route("/posts/{id}")
+            async def get_post(request):
+                return await fetch_post(request.path_params["id"])
+
+        Query parameter override::
+
+            # Client can override via URL params:
+            # GET /posts/1?fields=id,title&exclude=view_count
+            # The query params take precedence over decorator config
+        """
+        from zork.response import ResponseModel
+
+        def decorator(func):
+            async def wrapper(request, *args, **kwargs):
+                result = await func(request, *args, **kwargs)
+
+                if result is None:
+                    return result
+
+                query_params = dict(request.query_params)
+                effective_include = include
+                effective_exclude = set(exclude) if exclude else set()
+                effective_exclude_none = exclude_none
+                effective_by_alias = by_alias
+
+                if "fields" in query_params:
+                    effective_include = set(query_params["fields"].split(","))
+                if "exclude" in query_params:
+                    effective_exclude.update(query_params["exclude"].split(","))
+                if query_params.get("exclude_none") == "true":
+                    effective_exclude_none = True
+
+                response_model = ResponseModel(
+                    model=model,
+                    include=effective_include,
+                    exclude=effective_exclude,
+                    exclude_none=effective_exclude_none,
+                    exclude_unset=exclude_unset,
+                    exclude_defaults=exclude_defaults,
+                    by_alias=effective_by_alias,
+                )
+
+                return response_model.transform(result)
+
+            return wrapper
+
+        return decorator

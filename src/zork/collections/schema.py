@@ -22,12 +22,18 @@ class Field:
         default: Any = None,
         unique: bool = False,
         indexed: bool = False,
+        hidden: bool = False,
+        read_only: bool = False,
+        alias: str | None = None,
     ):
         self.name = name
         self.required = required
         self.default = default
         self.unique = unique
         self.indexed = indexed
+        self.hidden = hidden
+        self.read_only = read_only
+        self.alias = alias
 
     def sqlite_type(self) -> str:
         raise NotImplementedError
@@ -56,9 +62,13 @@ class TextField(Field):
         indexed: bool = False,
         min_length: int | None = None,
         max_length: int | None = None,
+        hidden: bool = False,
+        read_only: bool = False,
+        alias: str | None = None,
     ):
         super().__init__(
-            name, required=required, default=default, unique=unique, indexed=indexed
+            name, required=required, default=default, unique=unique, indexed=indexed,
+            hidden=hidden, read_only=read_only, alias=alias
         )
         self.min_length = min_length
         self.max_length = max_length
@@ -90,9 +100,13 @@ class IntField(Field):
         indexed: bool = False,
         min_value: int | None = None,
         max_value: int | None = None,
+        hidden: bool = False,
+        read_only: bool = False,
+        alias: str | None = None,
     ):
         super().__init__(
-            name, required=required, default=default, unique=unique, indexed=indexed
+            name, required=required, default=default, unique=unique, indexed=indexed,
+            hidden=hidden, read_only=read_only, alias=alias
         )
         self.min_value = min_value
         self.max_value = max_value
@@ -124,9 +138,13 @@ class FloatField(Field):
         indexed: bool = False,
         min_value: float | None = None,
         max_value: float | None = None,
+        hidden: bool = False,
+        read_only: bool = False,
+        alias: str | None = None,
     ):
         super().__init__(
-            name, required=required, default=default, unique=unique, indexed=indexed
+            name, required=required, default=default, unique=unique, indexed=indexed,
+            hidden=hidden, read_only=read_only, alias=alias
         )
         self.min_value = min_value
         self.max_value = max_value
@@ -156,9 +174,13 @@ class BoolField(Field):
         default: Any = None,
         unique: bool = False,
         indexed: bool = False,
+        hidden: bool = False,
+        read_only: bool = False,
+        alias: str | None = None,
     ):
         super().__init__(
-            name, required=required, default=default, unique=unique, indexed=indexed
+            name, required=required, default=default, unique=unique, indexed=indexed,
+            hidden=hidden, read_only=read_only, alias=alias
         )
 
     def sqlite_type(self) -> str:
@@ -182,9 +204,13 @@ class DateTimeField(Field):
         unique: bool = False,
         indexed: bool = False,
         auto_now: bool = False,
+        hidden: bool = False,
+        read_only: bool = False,
+        alias: str | None = None,
     ):
         super().__init__(
-            name, required=required, default=default, unique=unique, indexed=indexed
+            name, required=required, default=default, unique=unique, indexed=indexed,
+            hidden=hidden, read_only=read_only, alias=alias
         )
         self.auto_now = auto_now
 
@@ -208,9 +234,13 @@ class URLField(Field):
         default: Any = None,
         unique: bool = False,
         indexed: bool = False,
+        hidden: bool = False,
+        read_only: bool = False,
+        alias: str | None = None,
     ):
         super().__init__(
-            name, required=required, default=default, unique=unique, indexed=indexed
+            name, required=required, default=default, unique=unique, indexed=indexed,
+            hidden=hidden, read_only=read_only, alias=alias
         )
 
     def sqlite_type(self) -> str:
@@ -233,9 +263,13 @@ class JSONField(Field):
         default: Any = None,
         unique: bool = False,
         indexed: bool = False,
+        hidden: bool = False,
+        read_only: bool = False,
+        alias: str | None = None,
     ):
         super().__init__(
-            name, required=required, default=default, unique=unique, indexed=indexed
+            name, required=required, default=default, unique=unique, indexed=indexed,
+            hidden=hidden, read_only=read_only, alias=alias
         )
 
     def sqlite_type(self) -> str:
@@ -287,9 +321,13 @@ class FileField(Field):
         public: bool = False,
         required: bool = False,
         indexed: bool = False,
+        hidden: bool = False,
+        read_only: bool = False,
+        alias: str | None = None,
     ) -> None:
         super().__init__(
-            name, required=required, default=None, unique=False, indexed=indexed
+            name, required=required, default=None, unique=False, indexed=indexed,
+            hidden=hidden, read_only=read_only, alias=alias
         )
         self.max_size = max_size
         self.allowed_types: list[str] = allowed_types or ["*/*"]
@@ -342,9 +380,13 @@ class RelationField(Field):
         required: bool = False,
         unique: bool = False,
         indexed: bool = False,
+        hidden: bool = False,
+        read_only: bool = False,
+        alias: str | None = None,
     ):
         super().__init__(
-            name, required=required, default=None, unique=unique, indexed=indexed
+            name, required=required, default=None, unique=unique, indexed=indexed,
+            hidden=hidden, read_only=read_only, alias=alias
         )
         self.collection = collection
 
@@ -377,6 +419,125 @@ class Collection:
         # same place — namespaced purely by event string.
         self._registry: HookRegistry = HookRegistry()
         self._runner: HookRunner = HookRunner(self._registry)
+        # Response model configuration
+        self._response_model: type[BaseModel] | None = None
+        self._response_include: set[str] | None = None
+        self._response_exclude: set[str] | None = None
+        self._response_exclude_none: bool = False
+        self._response_exclude_unset: bool = False
+        self._response_exclude_defaults: bool = False
+        self._response_by_alias: bool = False
+
+    def response(
+        self,
+        model: type[BaseModel] | None = None,
+        include: set[str] | None = None,
+        exclude: set[str] | None = None,
+        exclude_none: bool = False,
+        exclude_unset: bool = False,
+        exclude_defaults: bool = False,
+        by_alias: bool = False,
+    ) -> "Collection":
+        """Configure response transformation for this collection's API.
+
+        This method allows you to control which fields are returned in API
+        responses, hide sensitive data, rename fields via aliases, and
+        configure serialization options.
+
+        Args:
+            model: Pydantic BaseModel class for response validation and
+                transformation. Fields in the model will be used to validate
+                and serialize the response. Computed fields can be added
+                via model_validator.
+            include: Set of field names to include in responses. If None,
+                all fields are returned (subject to other exclusions).
+            exclude: Set of field names to exclude from all responses.
+                Useful for hiding sensitive fields like passwords.
+            exclude_none: If True, fields with None values are excluded
+                from the response.
+            exclude_unset: If True, fields not explicitly set are excluded.
+                Useful for omitting default values.
+            exclude_defaults: If True, fields with default values are excluded.
+            by_alias: If True, use field aliases in output instead of
+                field names. Requires the model to have alias_generator
+                configured.
+
+        Returns:
+            Self for method chaining.
+
+        Example::
+
+            from pydantic import BaseModel
+
+            class UserResponse(BaseModel):
+                id: str
+                name: str
+                email: str
+                created_at: str
+
+                @model_validator(mode="before")
+                def compute_full_name(cls, data):
+                    if isinstance(data, dict):
+                        data["full_name"] = f"{data.get('first_name', '')} {data.get('last_name', '')}"
+                    return data
+
+            users = Collection("users", fields=[
+                TextField("first_name", required=True),
+                TextField("last_name"),
+                TextField("email"),
+                TextField("password_hash"),
+            ])
+
+            # Exclude password from all responses
+            users.response(
+                model=UserResponse,
+                include={"id", "name", "email"},
+                exclude={"password_hash"},
+                exclude_none=True
+            )
+
+            # Or simpler - just exclude fields by name
+            users.response(exclude={"password_hash"})
+
+        Example with query parameter override::
+
+            # Users can override via ?fields=id,name or ?exclude=email
+            # This is handled at the router level
+        """
+        self._response_model = model
+        self._response_include = include
+        self._response_exclude = exclude
+        self._response_exclude_none = exclude_none
+        self._response_exclude_unset = exclude_unset
+        self._response_exclude_defaults = exclude_defaults
+        self._response_by_alias = by_alias
+        return self
+
+    def get_response_config(self) -> dict:
+        """Return the response configuration for this collection.
+
+        Returns:
+            Dict with response model and transformation settings.
+        """
+        return {
+            "model": self._response_model,
+            "include": self._response_include,
+            "exclude": self._response_exclude or set(),
+            "exclude_none": self._response_exclude_none,
+            "exclude_unset": self._response_exclude_unset,
+            "exclude_defaults": self._response_exclude_defaults,
+            "by_alias": self._response_by_alias,
+            "hidden_fields": {f.name for f in self.fields if f.hidden},
+        }
+
+    def has_response_config(self) -> bool:
+        """Check if this collection has response configuration."""
+        return (
+            self._response_model is not None
+            or self._response_include is not None
+            or self._response_exclude is not None
+            or any(f.hidden for f in self.fields)
+        )
 
     def bind_registry(self, registry: HookRegistry, runner: HookRunner) -> None:
         """Swap in a shared registry, migrating any existing handlers."""

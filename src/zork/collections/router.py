@@ -9,6 +9,57 @@ from zork.collections.schema import Collection, FileField, RelationField
 from zork.collections.store import CollectionStore
 from zork.errors import ZorkError
 from zork.hooks.context import ZorkContext
+from zork.response import ResponseModel
+
+
+def _transform_response(data, collection: Collection, request: Request) -> dict | list[dict]:
+    """Transform response data according to collection's response config.
+
+    Supports query parameter overrides:
+    - ?fields=id,name,email - include only these fields
+    - ?exclude=password,token - exclude these fields
+    - ?exclude_none=true - exclude None values
+
+    Args:
+        data: Single record dict or list of records
+        collection: The collection to get config from
+        request: The request to extract query params from
+
+    Returns:
+        Transformed data
+    """
+    if not collection.has_response_config():
+        return data
+
+    config = collection.get_response_config()
+    query_params = dict(request.query_params)
+
+    include = config["include"]
+    exclude = set(config["exclude"]) | config["hidden_fields"]
+    exclude_none = config["exclude_none"]
+    exclude_unset = config["exclude_unset"]
+    exclude_defaults = config["exclude_defaults"]
+    by_alias = config["by_alias"]
+    model = config["model"]
+
+    if "fields" in query_params:
+        include = set(query_params["fields"].split(","))
+    if "exclude" in query_params:
+        exclude.update(query_params["exclude"].split(","))
+    if query_params.get("exclude_none") == "true":
+        exclude_none = True
+
+    response_model = ResponseModel(
+        model=model,
+        include=include,
+        exclude=exclude,
+        exclude_none=exclude_none,
+        exclude_unset=exclude_unset,
+        exclude_defaults=exclude_defaults,
+        by_alias=by_alias,
+    )
+
+    return response_model.transform(data)
 
 
 def build_collection_routes(
@@ -110,9 +161,10 @@ def _routes_for_collection(
                     await _expand_field(
                         item, field_name, collection, store, all_collections
                     )
+        transformed_items = _transform_response(items, collection, request)
         return JSONResponse(
             {
-                "items": items,
+                "items": transformed_items,
                 "total": total,
                 "limit": limit,
                 "offset": offset,
@@ -137,7 +189,8 @@ def _routes_for_collection(
                 await _expand_field(
                     record, field_name, collection, store, all_collections
                 )
-        return JSONResponse(record)
+        transformed = _transform_response(record, collection, request)
+        return JSONResponse(transformed)
 
     async def create_record(request: Request) -> JSONResponse:
         _check_auth(request, write_rule)
@@ -153,7 +206,8 @@ def _routes_for_collection(
             record = await store.create(collection, body, ctx=ctx)
         except ValidationError as e:
             raise ZorkError(400, str(e))
-        return JSONResponse(record, status_code=201)
+        transformed = _transform_response(record, collection, request)
+        return JSONResponse(transformed, status_code=201)
 
     async def update_record(request: Request) -> JSONResponse:
         _check_auth(request, write_rule)
@@ -173,7 +227,8 @@ def _routes_for_collection(
             raise ZorkError(400, str(e))
         if record is None:
             raise ZorkError(404, "Record not found")
-        return JSONResponse(record)
+        transformed = _transform_response(record, collection, request)
+        return JSONResponse(transformed)
 
     async def delete_record(request: Request) -> JSONResponse:
         _check_auth(request, write_rule)
