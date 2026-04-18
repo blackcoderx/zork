@@ -893,11 +893,19 @@ class ZorkOpenAPI:
         return HTMLResponse(SWAGGER_HTML.format(title=json.dumps(self.title)[1:-1]))
 
     def build_routes(self) -> list[Route]:
-        # Use prefix for OpenAPI routes if versioning is enabled
-        doc_prefix = self.prefix or ""
+        # When prefix is explicitly set (versioning enabled), use it.
+        # Default: keep original paths /openapi.json and /docs (no prefix).
+        if self.prefix:
+            return [
+                Route(
+                    f"{self.prefix}/openapi.json",
+                    self._get_openapi_json,
+                    methods=["GET"],
+                ),
+                Route(f"{self.prefix}/docs", self._get_docs, methods=["GET"]),
+            ]
+        # Default behavior: no prefix (backward compatible)
         return [
-            Route(
-                f"{doc_prefix}/openapi.json", self._get_openapi_json, methods=["GET"]
-            ),
-            Route(f"{doc_prefix}/docs", self._get_docs, methods=["GET"]),
+            Route("/openapi.json", self._get_openapi_json, methods=["GET"]),
+            Route("/docs", self._get_docs, methods=["GET"]),
         ]

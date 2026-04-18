@@ -21,7 +21,7 @@ def app(db_path):
     zork = Zork(
         database=db_path,
         title="Test API",
-        version="2.0.0",
+        api_version="2.0.0",
     )
 
     posts = Collection(
@@ -44,7 +44,7 @@ def app_with_file_field(db_path, tmp_path):
     zork = Zork(
         database=db_path,
         title="Test API with Files",
-        version="2.0.0",
+        api_version="2.0.0",
     )
 
     posts = Collection(
@@ -64,7 +64,7 @@ def app_with_auth(db_path):
     zork = Zork(
         database=db_path,
         title="Auth API",
-        version="1.0.0",
+        api_version="1.0.0",
     )
 
     posts = Collection(

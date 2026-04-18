@@ -150,6 +150,8 @@ class TestAPIVersioning:
     def test_version_without_v_prefix(self, db_path):
         """Version without 'v' prefix should add it"""
         zork = Zork(database=db_path, version="2")
+        posts = Collection("posts", fields=[TextField("title")])
+        zork.register(posts)
 
         assert zork.version_prefix == "/api/v2"
 
@@ -162,6 +164,8 @@ class TestAPIVersioning:
     def test_custom_prefix(self, db_path):
         """Custom prefix should be used"""
         zork = Zork(database=db_path, version="v1", version_prefix="/custom")
+        posts = Collection("posts", fields=[TextField("title")])
+        zork.register(posts)
 
         assert zork.version_prefix == "/custom/v1"
 
