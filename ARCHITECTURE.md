@@ -7,6 +7,9 @@
 3. [Project Structure](#project-structure)
 4. [Detailed Subsystem Breakdown](#detailed-subsystem-breakdown-and-file-manifest)
    - [1. The Application Core](#1-the-application-core-srczork)
+     - [1.7 API Versioning Configuration](#17-api-versioning-configuration)
+     - [1.8 CORS Configuration](#18-cors-configuration)
+     - [1.9 OpenAPI Configuration](#19-openapi-configuration)
    - [2. The Database Layer](#2-the-database-layer-srczorkdb)
    - [3. Dynamic Collections & API Generation](#3-dynamic-collections--api-generation-srczorkcollections)
    - [4. Lifecycle Hooks](#4-lifecycle-hooks-srczorkhooks)
@@ -276,6 +279,97 @@ from zork import (
 * **`pipeline.py`** — Formats HTTP and WebSocket requests. Manages CORS, standardises error shapes, assigns request IDs, and decides whether a request routes to Auth, Collections, or Realtime endpoints.
 * **`cli.py`** — Handles terminal commands (via Typer). Commands: `serve`, `init`, `promote`, `generate-secret`, `doctor`, `routes`, `info`, and the `migrate` sub-app (`run`, `status`, `rollback`, `create`). See [Migrations Subsystem](#11-migrations-subsystem-srczork-migrations) below.
 * **`errors.py`** — A unified set of exceptions allowing standard error responses across all modules.
+
+#### 1.7 API Versioning Configuration
+
+Zork supports URL-based API versioning to allow breaking changes while maintaining backward compatibility. When versioning is enabled, all routes are prefixed with the version identifier.
+
+* **`version`** — Constructor parameter to enable API versioning (e.g., `"v1"`, `"v2"`). Routes become `/api/v1/...` instead of `/api/...`.
+* **`version_prefix`** — Constructor parameter to customize the URL prefix (defaults to `/api`). Useful for custom API paths.
+* **`version_prefix` property** — Returns the full URL prefix including version. Returns `None` if versioning is disabled.
+
+```python
+# Versioned API (v1)
+app = Zork(version="v1")
+# Routes: /api/v1/posts, /api/v1/posts/{id}
+
+# Versioned API with custom prefix
+app = Zork(version="v2", version_prefix="/api")
+# Routes: /api/v2/posts
+
+# Versioned API with custom prefix
+app = Zork(version="1", version_prefix="/app")
+# Routes: /app/v1/posts
+
+# No versioning (default)
+app = Zork()
+# Routes: /api/posts
+```
+
+---
+
+#### 1.8 CORS Configuration
+
+Zork provides a flexible CORS (Cross-Origin Resource Sharing) configuration system. CORS is **disabled by default** for security. Enable it using either constructor parameters or the fluent API.
+
+**Constructor Parameters:**
+* `cors_allow_origins` — List of allowed origins (e.g., `["https://myapp.com"]`)
+* `cors_allow_credentials` — Allow credentials (cookies, auth headers)
+* `cors_allow_methods` — Allowed HTTP methods
+* `cors_allow_headers` — Allowed request headers
+
+**Fluent API (`app.cors`):**
+```python
+app.cors.allow_origins(origins)
+app.cors.allow_credentials(allow)
+app.cors.allow_methods(methods)
+app.cors.allow_headers(headers)
+app.cors.expose_headers(headers)
+app.cors.max_age(seconds)
+```
+
+**Constructor Approach:**
+```python
+app = Zork(
+    cors_allow_origins=["https://myapp.com"],
+    cors_allow_credentials=True,
+    cors_allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    cors_allow_headers=["Content-Type", "Authorization"],
+)
+```
+
+**Fluent API Approach:**
+```python
+app = Zork()
+app.cors.allow_origins(["https://myapp.com", "https://admin.myapp.com"])
+app.cors.allow_credentials(True)
+app.cors.allow_methods(["GET", "POST"])
+app.cors.allow_headers(["Content-Type"])
+app.cors.expose_headers(["X-Total-Count"])
+app.cors.max_age(3600)
+```
+
+The CORS middleware integrates with the middleware pipeline via `build_middleware_stack()` in `pipeline.py`. When no CORS is configured, a no-op middleware is used instead.
+
+---
+
+#### 1.9 OpenAPI Configuration
+
+Zork auto-generates OpenAPI 3.1 documentation available at `/openapi.json` and interactive Swagger UI at `/docs`.
+
+* **`api_version`** — Constructor parameter to set the OpenAPI spec version (defaults to `"1.0.0"`). This appears in the `info.version` field of the generated OpenAPI spec.
+
+```python
+# Custom OpenAPI version
+app = Zork(title="My API", api_version="2.0.0")
+# Generates OpenAPI spec with version: "2.0.0"
+```
+
+The `ZorkOpenAPI` class in `openapi.py` handles spec generation, including:
+- Auto-generated path definitions from registered collections
+- Schema definitions for all field types
+- Authentication requirements from auth rules
+- Version prefix handling for versioned routes
 
 ### 2. The Database Layer (`src/zork/db/`)
 
@@ -627,7 +721,9 @@ The test suite lives in `tests/` and is run with `pytest`. All async tests use `
 | Rate limiting | `test_ratelimit.py` |
 | Realtime (WebSocket/SSE) | `test_realtime.py` |
 | Redis broker | `test_redis_broker.py` |
-| App-level integration | `test_app.py` |
+| App-level integration | `test_app.py` (includes API versioning tests) |
+| CORS configuration | `test_cors.py`, `test_pipeline.py` |
+| OpenAPI / Swagger UI | `test_openapi.py` |
 
 ### Test quality standards enforced
 
@@ -676,6 +772,15 @@ The test suite lives in `tests/` and is run with `pytest`. All async tests use `
 | `ZORK_COOKIE_DOMAIN` | Cookie domain | `None` | `.example.com` |
 | `ZORK_CSRF_ENABLE` | Enable CSRF protection (cookies only) | `true` | `false` |
 | `ZORK_MAX_REFRESH_TOKENS` | Max refresh tokens per user | `5` | `10` |
+| `ZORK_CACHE_TTL` | Default cache TTL (seconds) | `300` | `600` |
+| `ZORK_CACHE_PREFIX` | Redis cache key prefix | `zork` | `myapp` |
+| `ZORK_RATE_LIMIT_ANON` | Rate limit for anonymous users | `100/60` | `50/60` |
+| `ZORK_RATE_LIMIT_USER` | Rate limit for authenticated users | `1000/60` | `500/60` |
+| `ZORK_EMAIL_FROM` | Email from address | `noreply@localhost` | `noreply@example.com` |
+| `ZORK_APP_NAME` | App name for email templates | `Your App` | `My Application` |
+| `ZORK_BASE_URL` | Base URL for email links | `http://localhost:8000` | `https://api.example.com` |
+| `ZORK_SSE_HEARTBEAT` | SSE heartbeat interval (seconds) | `15` | `30` |
+| `ZORK_AUTO_SYNC` | Enable auto-schema sync on startup | (auto-detect) | `true`, `false` |
 
 ### Database URL Formats
 
@@ -790,6 +895,51 @@ app.email.use(
     app_name="MyApp",
     base_url="https://myapp.com",
 )
+```
+
+### App with API Versioning
+
+```python
+# Versioned API (v1) - routes become /api/v1/...
+app = Zork(version="v1")
+
+# With custom prefix
+app = Zork(version="v2", version_prefix="/app")
+# Routes: /app/v2/posts
+
+# Combined with database selection
+app = Zork(
+    database="postgresql://user:pass@localhost:5432/mydb",
+    version="v1",
+)
+# Routes: /api/v1/posts
+```
+
+### App with CORS
+
+```python
+# CORS via constructor
+from zork import Zork
+
+app = Zork(
+    cors_allow_origins=["https://myapp.com"],
+    cors_allow_credentials=True,
+    cors_allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    cors_allow_headers=["Content-Type", "Authorization"],
+)
+```
+
+```python
+# CORS via fluent API
+from zork import Zork
+
+app = Zork()
+app.cors.allow_origins(["https://myapp.com", "https://admin.myapp.com"])
+app.cors.allow_credentials(True)
+app.cors.allow_methods(["GET", "POST"])
+app.cors.allow_headers(["Content-Type"])
+app.cors.expose_headers(["X-Total-Count"])
+app.cors.max_age(3600)
 ```
 
 ### CLI Commands
