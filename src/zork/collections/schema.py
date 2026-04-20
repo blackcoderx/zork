@@ -407,6 +407,7 @@ class Collection:
         name: str,
         fields: list[Field],
         indexes: list[tuple[str, ...]] | None = None,
+        pagination: bool | str = True,
     ):
         self.name = name
         self.fields = fields
@@ -427,6 +428,8 @@ class Collection:
         self._response_exclude_unset: bool = False
         self._response_exclude_defaults: bool = False
         self._response_by_alias: bool = False
+        # Pagination configuration: True (always), False (never), "auto" (smart)
+        self._pagination: bool | str = pagination
 
     def response(
         self,
@@ -512,6 +515,44 @@ class Collection:
         self._response_exclude_defaults = exclude_defaults
         self._response_by_alias = by_alias
         return self
+
+    def paginate(self, enabled: bool | str = True) -> "Collection":
+        """Configure pagination behavior for this collection's list endpoint.
+
+        Args:
+            enabled: Pagination setting:
+                - True: Always include pagination metadata
+                - False: Never include pagination metadata
+                - "auto": Smart mode - include only when there are more pages
+
+        Returns:
+            Self for method chaining.
+
+        Example::
+
+            posts = Collection("posts", fields=[
+                TextField("title", required=True),
+            ])
+
+            # Always include pagination (default)
+            posts.paginate(True)
+
+            # Never include pagination metadata
+            posts.paginate(False)
+
+            # Smart mode - include only when has_more is true
+            posts.paginate("auto")
+        """
+        self._pagination = enabled
+        return self
+
+    def get_pagination_config(self) -> bool | str:
+        """Return the pagination configuration for this collection.
+
+        Returns:
+            Pagination setting: True, False, or "auto"
+        """
+        return self._pagination
 
     def get_response_config(self) -> dict:
         """Return the response configuration for this collection.

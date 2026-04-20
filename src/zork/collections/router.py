@@ -136,6 +136,19 @@ def _routes_for_collection(
         expand_fields = (
             params.pop("expand", "").split(",") if "expand" in params else []
         )
+        # Check pagination config and query override
+        pagination_config = collection.get_pagination_config()
+        query_pagination = params.pop("pagination", "auto")
+        if query_pagination == "false":
+            include_pagination = False
+        elif query_pagination == "true":
+            include_pagination = True
+        else:
+            if pagination_config == "auto":
+                include_pagination = None  # Use has_more logic
+            else:
+                include_pagination = pagination_config
+
         filters = params if params else None
         ctx = ZorkContext.from_request(
             request, collection=collection.name, operation="list"
@@ -162,41 +175,48 @@ def _routes_for_collection(
                         item, field_name, collection, store, all_collections
                     )
         transformed_items = _transform_response(items, collection, request)
-        has_more = offset + limit < total
-        next_offset = offset + limit if has_more else None
-        prev_offset = max(0, offset - limit) if offset > 0 else None
-        page = (offset // limit) + 1
-        total_pages = (total + limit - 1) // limit if limit > 0 else 1
 
-        base_url = str(request.url).split("?")[0] if request.url else ""
-        query_params = dict(request.query_params)
-        query_params.pop("limit", None)
-        query_params.pop("offset", None)
-        params_str = "&" + "&".join(f"{k}={v}" for k, v in query_params.items()) if query_params else ""
-        links = {
-            "self": f"{base_url}?offset={offset}&limit={limit}{params_str}" if params_str else f"{base_url}?offset={offset}&limit={limit}",
-            "next": f"{base_url}?offset={next_offset}&limit={limit}{params_str}" if next_offset is not None and params_str else f"{base_url}?offset={next_offset}&limit={limit}" if next_offset is not None else None,
-            "prev": f"{base_url}?offset={prev_offset}&limit={limit}{params_str}" if prev_offset is not None and params_str else f"{base_url}?offset={prev_offset}&limit={limit}" if prev_offset is not None else None,
-            "first": f"{base_url}?offset=0&limit={limit}{params_str}" if params_str else f"{base_url}?offset=0&limit={limit}",
-            "last": f"{base_url}?offset={(total_pages - 1) * limit}&limit={limit}{params_str}" if params_str else f"{base_url}?offset={(total_pages - 1) * limit}&limit={limit}",
-        }
+        # Build response
+        response_data: dict = {"items": transformed_items}
 
-        return JSONResponse(
-            {
-                "items": transformed_items,
-                "pagination": {
-                    "total": total,
-                    "limit": limit,
-                    "offset": offset,
-                    "has_more": has_more,
-                    "next_offset": next_offset,
-                    "prev_offset": prev_offset,
-                    "page": page,
-                    "total_pages": total_pages,
-                },
-                "links": links,
-            }
+        # Determine if pagination should be included
+        should_include_pagination = include_pagination is True or (
+            include_pagination is None and (offset + limit < total or offset > 0)
         )
+
+        if should_include_pagination:
+            has_more = offset + limit < total
+            next_offset = offset + limit if has_more else None
+            prev_offset = max(0, offset - limit) if offset > 0 else None
+            page = (offset // limit) + 1
+            total_pages = max(1, (total + limit - 1) // limit) if limit > 0 else 1
+
+            base_url = str(request.url).split("?")[0] if request.url else ""
+            query_params = dict(request.query_params)
+            query_params.pop("limit", None)
+            query_params.pop("offset", None)
+            params_str = "&" + "&".join(f"{k}={v}" for k, v in query_params.items()) if query_params else ""
+
+            response_data["pagination"] = {
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "has_more": has_more,
+                "next_offset": next_offset,
+                "prev_offset": prev_offset,
+                "page": page,
+                "total_pages": total_pages,
+            }
+
+            response_data["links"] = {
+                "self": f"{base_url}?offset={offset}&limit={limit}{params_str}" if params_str else f"{base_url}?offset={offset}&limit={limit}",
+                "next": f"{base_url}?offset={next_offset}&limit={limit}{params_str}" if next_offset is not None and params_str else f"{base_url}?offset={next_offset}&limit={limit}" if next_offset is not None else None,
+                "prev": f"{base_url}?offset={prev_offset}&limit={limit}{params_str}" if prev_offset is not None and params_str else f"{base_url}?offset={prev_offset}&limit={limit}" if prev_offset is not None else None,
+                "first": f"{base_url}?offset=0&limit={limit}{params_str}" if params_str else f"{base_url}?offset=0&limit={limit}",
+                "last": f"{base_url}?offset={(total_pages - 1) * limit}&limit={limit}{params_str}" if params_str else f"{base_url}?offset={(total_pages - 1) * limit}&limit={limit}",
+            }
+
+        return JSONResponse(response_data)
 
     async def get_record(request: Request) -> JSONResponse:
         _check_auth(request, read_rule)
