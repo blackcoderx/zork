@@ -110,6 +110,7 @@ You now have:
 - Schema diff and migration sync commands
 - Realtime via WebSocket and Server-Sent Events
 - File storage — local filesystem or S3-compatible (AWS, R2, MinIO, and more)
+- Static file serving — serve CSS, JS, images with SPA fallback
 - Lifecycle hooks — `before_create`, `after_update`, `before_delete`, etc.
 - Built-in caching with in-memory or Redis backends
 - Redis support — caching, sessions, and realtime pub/sub scaling
@@ -121,6 +122,9 @@ You now have:
 - Zero boilerplate — one file to a working API
 - Configurable CORS — secure defaults, opt-in with specific origins
 - API versioning — URL-based versions (/api/v1, /api/v2)
+- Response models — field exclusion, aliases, computed fields
+- Enhanced pagination — total count, next/prev links, HAL-style navigation
+- Built-in structured logging — JSON logs with request tracing
 
 ## CORS Configuration
 
