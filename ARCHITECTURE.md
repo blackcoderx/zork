@@ -6,10 +6,11 @@
 2. [High-Level Architecture Map](#high-level-architecture-map)
 3. [Project Structure](#project-structure)
 4. [Detailed Subsystem Breakdown](#detailed-subsystem-breakdown-and-file-manifest)
-   - [1. The Application Core](#1-the-application-core-srczork)
-     - [1.7 API Versioning Configuration](#17-api-versioning-configuration)
-     - [1.8 CORS Configuration](#18-cors-configuration)
-     - [1.9 OpenAPI Configuration](#19-openapi-configuration)
+- [1. The Application Core](#1-the-application-core-srczork)
+      - [1.7 Logging Configuration](#17-logging-configuration)
+      - [1.8 API Versioning Configuration](#18-api-versioning-configuration)
+      - [1.9 CORS Configuration](#19-cors-configuration)
+      - [1.10 OpenAPI Configuration](#110-openapi-configuration)
    - [2. The Database Layer](#2-the-database-layer-srczorkdb)
    - [3. Dynamic Collections & API Generation](#3-dynamic-collections--api-generation-srczorkcollections)
    - [4. Lifecycle Hooks](#4-lifecycle-hooks-srczorkhooks)
@@ -281,8 +282,65 @@ from zork import (
 * **`pipeline.py`** — Formats HTTP and WebSocket requests. Manages CORS, standardises error shapes, assigns request IDs, and decides whether a request routes to Auth, Collections, or Realtime endpoints.
 * **`cli.py`** — Handles terminal commands (via Typer). Commands: `serve`, `init`, `promote`, `generate-secret`, `doctor`, `routes`, `info`, and the `migrate` sub-app (`run`, `status`, `rollback`, `create`). See [Migrations Subsystem](#11-migrations-subsystem-srczork-migrations) below.
 * **`errors.py`** — A unified set of exceptions allowing standard error responses across all modules.
+* **`logging.py`** — Structured logging setup using structlog. Auto-configured on `app.build()` with sensible defaults (INFO level, console format). Supports environment variable configuration and programmatic setup.
 
-#### 1.7 API Versioning Configuration
+#### 1.7 Logging Configuration
+
+Zork uses [structlog](https://www.structlog.org/) for structured logging. Logging is automatically configured when you build or serve your application.
+
+**Public API:**
+```python
+from zork.logging import (
+    setup,                  # Programmatic setup
+    configure_from_env,     # Setup from environment variables
+    get_logger,             # Get a logger instance
+    bind_context,           # Bind request-level context
+    reset_context,          # Clear bound context
+)
+```
+
+**Environment Variables:**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ZORK_LOG_LEVEL` | INFO | DEBUG, INFO, WARNING, ERROR, CRITICAL |
+| `ZORK_LOG_FORMAT` | console | console (human-readable) or json (production) |
+| `ZORK_LOG_COLORIZE` | auto | auto, true, false (ANSI colors) |
+| `ZORK_LOG_INCLUDE_TIMESTAMP` | true | Include ISO timestamp |
+| `ZORK_LOG_INCLUDE_MODULE` | true | Include logger name |
+
+**Programmatic Setup:**
+```python
+from zork.logging import setup
+
+# Custom configuration
+setup(level="DEBUG", format="console", colorize=True)
+
+# Get a logger
+log = get_logger("myapp")
+log.info("request_processed", user_id=123, duration_ms=45)
+```
+
+**Contextual Logging:**
+```python
+from zork.logging import bind_context, reset_context
+
+# Bind request-level context
+bind_context(request_id="abc123", user_id=42)
+log.info("processing")  # Includes request_id and user_id
+reset_context()
+```
+
+**Console Output (Development):**
+```
+2024-01-15T10:30:00.123Z | INFO  | myapp | request_processed | user_id=123 duration_ms=45
+```
+
+**JSON Output (Production):**
+```json
+{"level": "info", "timestamp": "2024-01-15T10:30:00.123Z", "event": "request_processed", "user_id": 123, "duration_ms": 45}
+```
+
+#### 1.8 API Versioning Configuration
 
 Zork supports URL-based API versioning to allow breaking changes while maintaining backward compatibility. When versioning is enabled, all routes are prefixed with the version identifier.
 
@@ -310,7 +368,7 @@ app = Zork()
 
 ---
 
-#### 1.8 CORS Configuration
+#### 1.9 CORS Configuration
 
 Zork provides a flexible CORS (Cross-Origin Resource Sharing) configuration system. CORS is **disabled by default** for security. Enable it using either constructor parameters or the fluent API.
 
@@ -355,7 +413,7 @@ The CORS middleware integrates with the middleware pipeline via `build_middlewar
 
 ---
 
-#### 1.9 OpenAPI Configuration
+#### 1.10 OpenAPI Configuration
 
 Zork auto-generates OpenAPI 3.1 documentation available at `/openapi.json` and interactive Swagger UI at `/docs`.
 
@@ -847,6 +905,11 @@ The test suite lives in `tests/` and is run with `pytest`. All async tests use `
 | `ZORK_BASE_URL` | Base URL for email links | `http://localhost:8000` | `https://api.example.com` |
 | `ZORK_SSE_HEARTBEAT` | SSE heartbeat interval (seconds) | `15` | `30` |
 | `ZORK_AUTO_SYNC` | Enable auto-schema sync on startup | (auto-detect) | `true`, `false` |
+| `ZORK_LOG_LEVEL` | Logging level | `INFO` | `DEBUG`, `WARNING`, `ERROR` |
+| `ZORK_LOG_FORMAT` | Log output format | `console` | `json` |
+| `ZORK_LOG_COLORIZE` | Enable ANSI colors | `auto` | `true`, `false` |
+| `ZORK_LOG_INCLUDE_TIMESTAMP` | Include timestamp in logs | `true` | `false` |
+| `ZORK_LOG_INCLUDE_MODULE` | Include logger name | `true` | `false` |
 
 ### Database URL Formats
 
