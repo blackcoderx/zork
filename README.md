@@ -165,6 +165,23 @@ app = Zork(database="app.db", version="v2", version_prefix="/custom")
 # Routes: /custom/v2/posts, /custom/v2/auth/...
 ```
 
+## Static File Serving
+
+Serve static assets (CSS, JS, images) directly from your application:
+
+```python
+app = Zork(database="app.db")
+
+# Simple static mount
+app.static("/static", "./static")
+
+# Multiple mounts
+app.static("/assets", "./assets")
+
+# SPA mode (fallback to index.html for unmatched routes)
+app.static("/", "./dist", html=True)
+```
+
 ## Documentation
 
 Full documentation at **[docs](https://github.com/blackcoderx/zork/tree/main/docs)**
