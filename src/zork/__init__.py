@@ -31,6 +31,7 @@ from zork.ratelimit.backends import (
 )
 from zork.ratelimit.middleware import RateLimitRule
 from zork.response import ResponseModel
+from zork.logging import configure_from_env, get_logger, setup
 
 load_dotenv()
 
@@ -63,4 +64,8 @@ __all__ = [
     "RateLimitRule",
     # Response
     "ResponseModel",
+    # Logging
+    "setup",
+    "configure_from_env",
+    "get_logger",
 ]

@@ -41,6 +41,7 @@ from zork.ratelimit.backends import (
 from zork.ratelimit.middleware import RateLimitMiddleware, RateLimitRule
 from zork.realtime import RealtimeFacade
 from zork.realtime.broker import RealtimeBroker
+from zork.logging import configure_from_env
 
 logger = logging.getLogger("zork")
 
@@ -751,6 +752,8 @@ class Zork:
         return self._broker
 
     def build(self) -> Starlette:
+        configure_from_env()
+
         if self._db_backend_override is not None:
             # Developer supplied a fully pre-configured backend — bypass URL resolution.
             db = Database.__new__(Database)
