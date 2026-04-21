@@ -32,6 +32,7 @@ from zork.ratelimit.backends import (
 from zork.ratelimit.middleware import RateLimitRule
 from zork.response import ResponseModel
 from zork.logging import configure_from_env, get_logger, setup
+from zork.staticfiles import StaticFilesConfig
 
 load_dotenv()
 
@@ -68,4 +69,6 @@ __all__ = [
     "setup",
     "configure_from_env",
     "get_logger",
+    # Static files
+    "StaticFilesConfig",
 ]

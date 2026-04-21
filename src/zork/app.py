@@ -42,6 +42,7 @@ from zork.ratelimit.middleware import RateLimitMiddleware, RateLimitRule
 from zork.realtime import RealtimeFacade
 from zork.realtime.broker import RealtimeBroker
 from zork.logging import configure_from_env
+from zork.staticfiles import StaticFilesConfig, mount_static_files
 
 logger = logging.getLogger("zork")
 
@@ -445,6 +446,66 @@ class _EmailConfig:
         asyncio.create_task(_safe_send(backend, message))
 
 
+class _StaticFilesConfig:
+    """Fluent static files configuration facade — accessible via ``app.static()``.
+
+    Example::
+
+        app = Zork(database="app.db")
+        app.static("/static", "./static")
+        app.static("/assets", "./assets", html=True)
+    """
+
+    def __init__(self) -> None:
+        self._configs: list[StaticFilesConfig] = []
+
+    def mount(
+        self,
+        path: str,
+        directory: str,
+        *,
+        name: str | None = None,
+        html: bool = False,
+        cache_ttl: int | None = None,
+    ) -> "_StaticFilesConfig":
+        """Mount a static files directory at a URL path.
+
+        Args:
+            path: URL path prefix (e.g., "/static")
+            directory: Filesystem path (e.g., "./static")
+            name: Mount name for internal reference (default: derived from path)
+            html: Enable SPA fallback (serve index.html for 404s)
+            cache_ttl: Cache TTL in seconds (None = use framework default)
+
+        Returns:
+            Self for chaining.
+
+        Example::
+
+            app.static("/static", "./static")
+            app.static("/assets", "./assets")
+            app.static("/", "./dist", html=True)  # SPA fallback
+        """
+        self._configs.append(
+            StaticFilesConfig(
+                path=path,
+                directory=directory,
+                name=name,
+                html=html,
+                cache_ttl=cache_ttl,
+            )
+        )
+        return self
+
+    def _is_configured(self) -> bool:
+        """Check if any static files mounts are configured."""
+        return bool(self._configs)
+
+    def _get_configs(self) -> list[StaticFilesConfig]:
+        """Get all static files configurations."""
+        return list(self._configs)
+
+
 class _AppHooks:
     """Public facade for app-level hooks — ``app.hooks.on(...)`` / ``app.hooks.fire(...)``.
 
@@ -589,6 +650,8 @@ class Zork:
         self.email: _EmailConfig = _EmailConfig()
         # Phase 4: file storage
         self._storage_backend = None
+        # Phase 9: static files
+        self.staticfiles: _StaticFilesConfig = _StaticFilesConfig()
         # Multi-DB: optional pre-configured backend (set via configure_database())
         self._db_backend_override = None
         # CORS - configure via constructor or fluent API
@@ -689,6 +752,53 @@ class Zork:
 
         _rc.configure(url=url)
         os.environ["ZORK_REDIS_URL"] = url
+        return self
+
+    def static(
+        self,
+        path: str,
+        directory: str,
+        *,
+        name: str | None = None,
+        html: bool = False,
+        cache_ttl: int | None = None,
+    ) -> "Zork":
+        """Mount a static files directory at a URL path.
+
+        Static files are served before API routes, so requests to matching
+        paths are handled by the filesystem without hitting your Python code.
+
+        Args:
+            path: URL path prefix (e.g., "/static", "/assets")
+            directory: Filesystem path (e.g., "./static", "./dist")
+            name: Mount name for internal reference (default: derived from path)
+            html: Enable SPA fallback (serve index.html for unmatched routes)
+            cache_ttl: Cache TTL in seconds (None = use framework default)
+
+        Returns:
+            Self for chaining.
+
+        Example::
+
+            app = Zork(database="app.db")
+
+            # Simple static mount
+            app.static("/static", "./static")
+
+            # Multiple mounts
+            app.static("/assets", "./assets")
+            app.static("/images", "./images")
+
+            # SPA app with fallback (serves index.html for 404s)
+            app.static("/", "./dist", html=True)
+        """
+        self.staticfiles.mount(
+            path=path,
+            directory=directory,
+            name=name,
+            html=html,
+            cache_ttl=cache_ttl,
+        )
         return self
 
     def on(self, event: str, handler=None):
@@ -858,6 +968,16 @@ class Zork:
         vprefix = self.version_prefix
         health_path = f"{vprefix}/health" if vprefix else "/api/health"
         routes.append(Route(health_path, health, methods=["GET"]))
+
+        # Add static files mounts BEFORE collection routes
+        # so they take precedence for matching paths (e.g., /static/*)
+        if self.staticfiles._is_configured():
+            static_routes = mount_static_files(self.staticfiles._get_configs())
+            routes.extend(static_routes)
+            logger.info(
+                "Static files enabled (%d mount(s))",
+                len(static_routes),
+            )
 
         routes.extend(
             build_collection_routes(
