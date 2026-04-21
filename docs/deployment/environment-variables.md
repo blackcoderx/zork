@@ -91,7 +91,29 @@ This is a comprehensive reference for all environment variables used by Zork.
 | `ZORK_REALTIME_BROKER` | Broker type | `inprocess` |
 | `ZORK_SSE_HEARTBEAT` | SSE heartbeat (seconds) | `15` |
 
-## Fallback Variables
+## Logging
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ZORK_LOG_LEVEL` | Minimum log level | `INFO` |
+| `ZORK_LOG_FORMAT` | Output format (`console`, `json`) | `console` |
+| `ZORK_LOG_COLORIZE` | Enable ANSI colors (`auto`, `true`, `false`) | `auto` |
+| `ZORK_LOG_INCLUDE_TIMESTAMP` | Include ISO timestamp | `true` |
+| `ZORK_LOG_INCLUDE_MODULE` | Include logger name | `true` |
+
+### Development
+
+```bash
+# Verbose, colored output
+ZORK_LOG_LEVEL=DEBUG ZORK_LOG_COLORIZE=true python main.py
+```
+
+### Production
+
+```bash
+# JSON output for log aggregation
+ZORK_LOG_FORMAT=json ZORK_LOG_LEVEL=INFO python main.py
+```
 
 Some platforms use these standard variable names as fallbacks:
 
