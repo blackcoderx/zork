@@ -112,7 +112,10 @@ local count = redis.call('ZCARD', key)
 
 if count >= limit then
     local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
-    local reset_at = (oldest and oldest[2]) and (tonumber(oldest[2]) + window) or (now + window)
+    local reset_at = now + window
+    if #oldest >= 2 then
+        reset_at = tonumber(oldest[2]) + window
+    end
     return {0, 0, reset_at}
 end
 
