@@ -202,3 +202,189 @@ class TestCRUD:
         assert record["data"] == {"key": "value", "nums": [1, 2]}
         fetched = await store.get(c, record["id"])
         assert fetched["data"] == {"key": "value", "nums": [1, 2]}
+
+
+class TestFilterValidation:
+    @pytest.mark.asyncio
+    async def test_invalid_filter_key_rejected(self, store, db):
+        from zork.errors import ZorkError
+
+        c = Collection("items", fields=[TextField("name")])
+        await store.sync_schema(c)
+        await store.create(c, {"name": "test"})
+
+        with pytest.raises(ZorkError) as exc:
+            await store.list(c, filters={"invalid_field": "value"})
+        assert exc.value.status_code == 400
+        assert "Invalid field" in exc.value.message
+
+    @pytest.mark.asyncio
+    async def test_valid_filter_key_accepted(self, store, db):
+        c = Collection("items", fields=[TextField("name")])
+        await store.sync_schema(c)
+        await store.create(c, {"name": "test"})
+
+        items, total = await store.list(c, filters={"name": "test"})
+        assert total == 1
+        assert items[0]["name"] == "test"
+
+    @pytest.mark.asyncio
+    async def test_sql_injection_in_filter_key_rejected(self, store, db):
+        from zork.errors import ZorkError
+
+        c = Collection("items", fields=[TextField("name")])
+        await store.sync_schema(c)
+
+        with pytest.raises(ZorkError) as exc:
+            await store.list(c, filters={"name; DROP TABLE items; --": "value"})
+        assert exc.value.status_code == 400
+
+
+class TestOrderByValidation:
+    @pytest.mark.asyncio
+    async def test_invalid_order_by_rejected(self, store, db):
+        from zork.errors import ZorkError
+
+        c = Collection("items", fields=[TextField("name")])
+        await store.sync_schema(c)
+        await store.create(c, {"name": "test"})
+
+        with pytest.raises(ZorkError) as exc:
+            await store.list(c, order_by="invalid_column")
+        assert exc.value.status_code == 400
+        assert "Invalid field" in exc.value.message
+
+    @pytest.mark.asyncio
+    async def test_valid_order_by_accepted(self, store, db):
+        c = Collection("items", fields=[
+            TextField("name"),
+            IntField("count", default=0),
+        ])
+        await store.sync_schema(c)
+        await store.create(c, {"name": "a", "count": 1})
+        await store.create(c, {"name": "b", "count": 2})
+
+        items, total = await store.list(c, order_by="count")
+        assert items[0]["count"] == 1
+        assert items[1]["count"] == 2
+
+    @pytest.mark.asyncio
+    async def test_order_by_created_at_accepted(self, store, db):
+        c = Collection("items", fields=[TextField("name")])
+        await store.sync_schema(c)
+        await store.create(c, {"name": "first"})
+        await store.create(c, {"name": "second"})
+
+        items, total = await store.list(c, order_by="created_at")
+        assert len(items) == 2
+
+
+class TestFileField:
+    @pytest.mark.asyncio
+    async def test_file_field_serialization(self, store, db):
+        from zork.collections.schema import FileField
+
+        c = Collection("uploads", fields=[
+            FileField("document", max_size=5_000_000)
+        ])
+        await store.sync_schema(c)
+
+        file_metadata = {
+            "filename": "test.pdf",
+            "content_type": "application/pdf",
+            "size": 1024,
+            "path": "/uploads/test.pdf",
+        }
+        record = await store.create(c, {"document": file_metadata})
+        assert record["document"]["filename"] == "test.pdf"
+
+        fetched = await store.get(c, record["id"])
+        assert fetched["document"]["filename"] == "test.pdf"
+
+    @pytest.mark.asyncio
+    async def test_file_field_multiple_serialization(self, store, db):
+        from zork.collections.schema import FileField
+
+        c = Collection("attachments", fields=[
+            FileField("files", multiple=True)
+        ])
+        await store.sync_schema(c)
+
+        files_metadata = [
+            {"filename": "a.pdf", "size": 100},
+            {"filename": "b.pdf", "size": 200},
+        ]
+        record = await store.create(c, {"files": files_metadata})
+        assert len(record["files"]) == 2
+
+        fetched = await store.get(c, record["id"])
+        assert len(fetched["files"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_file_field_null_handling(self, store, db):
+        from zork.collections.schema import FileField
+
+        c = Collection("docs", fields=[FileField("file")])
+        await store.sync_schema(c)
+
+        record = await store.create(c, {"file": None})
+        assert record["file"] is None
+
+    @pytest.mark.asyncio
+    async def test_file_field_matches_mime(self, store, db):
+        from zork.collections.schema import FileField
+
+        field = FileField("attachment", allowed_types=["image/*", "application/pdf"])
+
+        assert field.matches_mime("image/png") is True
+        assert field.matches_mime("image/jpeg") is True
+        assert field.matches_mime("application/pdf") is True
+        assert field.matches_mime("text/plain") is False
+        assert field.matches_mime("video/mp4") is False
+
+    @pytest.mark.asyncio
+    async def test_file_field_all_types_wildcard(self, store, db):
+        from zork.collections.schema import FileField
+
+        field = FileField("attachment")
+
+        assert field.matches_mime("image/png") is True
+        assert field.matches_mime("application/json") is True
+        assert field.matches_mime("anything/else") is True
+
+
+class TestRelationField:
+    @pytest.mark.asyncio
+    async def test_relation_field_serialization(self, store, db):
+        from zork.collections.schema import RelationField, TextField
+
+        authors = Collection("authors", fields=[
+            TextField("name", required=True)
+        ])
+        books = Collection("books", fields=[
+            TextField("title", required=True),
+            RelationField("author", collection="authors"),
+        ])
+        await store.sync_schema(authors)
+        await store.sync_schema(books)
+
+        author = await store.create(authors, {"name": "Alice"})
+        book = await store.create(books, {"title": "Book 1", "author": author["id"]})
+
+        assert book["author"] == author["id"]
+
+        fetched = await store.get(books, book["id"])
+        assert fetched["author"] == author["id"]
+
+    @pytest.mark.asyncio
+    async def test_relation_field_null_handling(self, store, db):
+        from zork.collections.schema import RelationField, TextField
+
+        books = Collection("books2", fields=[
+            TextField("title"),
+            RelationField("author", collection="authors"),
+        ])
+        await store.sync_schema(books)
+
+        record = await store.create(books, {"title": "Orphan Book"})
+        assert record["author"] is None
