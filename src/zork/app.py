@@ -153,6 +153,25 @@ class _RateLimitConfig:
         )
         return self
 
+    def auth_limits(self) -> "_RateLimitConfig":
+        """Set default limits appropriate for authentication endpoints.
+
+        Applies stricter rate limits to login, register, and password reset
+        endpoints to protect against brute-force attacks and account enumeration.
+
+        This is optional - call it to enable stricter limits, or use app.rate_limit.rule()
+        to customize specific endpoints.
+
+        Limits applied:
+        - /api/auth/login: 5 requests/minute per IP
+        - /api/auth/register: 3 requests/minute per IP
+        - /api/auth/forgot-password: 3 requests/hour per IP+email combination
+        """
+        self.rule("/api/auth/login", limit=5, window=60, scope="ip")
+        self.rule("/api/auth/register", limit=3, window=60, scope="ip")
+        self.rule("/api/auth/forgot-password", limit=3, window=3600, scope="both")
+        return self
+
     def enable(self, value: bool = True) -> "_RateLimitConfig":
         self._enabled = value
         return self

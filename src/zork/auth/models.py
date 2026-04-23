@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
 from zork.db.backends.base import DatabaseIntegrityError
 from zork.db.connection import Database
+
+VALID_IDENTIFIER = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
 USERS_TABLE = "_users"
 TOKEN_BLOCKLIST_TABLE = "_token_blocklist"
@@ -14,12 +17,23 @@ PASSWORD_RESETS_TABLE = "_password_resets"
 EMAIL_VERIFICATIONS_TABLE = "_email_verifications"
 
 
+def _validate_column_name(name: str) -> str:
+    """Validate column name to prevent SQL injection.
+
+    Column names must match SQL identifier rules.
+    """
+    if not VALID_IDENTIFIER.match(name):
+        raise ValueError(f"Invalid column name: {name}")
+    return name
+
+
 async def create_auth_tables(
     db: Database, extend_columns: list[str] | None = None
 ) -> None:
     extra_cols = ""
     if extend_columns:
-        extra_cols = ", " + ", ".join(extend_columns)
+        validated_cols = [_validate_column_name(c) for c in extend_columns]
+        extra_cols = ", " + ", ".join(validated_cols)
 
     await db.execute(f"""
         CREATE TABLE IF NOT EXISTS {USERS_TABLE} (
@@ -54,10 +68,16 @@ async def create_auth_tables(
 
     await db.execute(f"""
         CREATE TABLE IF NOT EXISTS {PASSWORD_RESETS_TABLE} (
-            token TEXT PRIMARY KEY,
+            token TEXT NOT NULL,
             user_id TEXT NOT NULL,
-            expires_at TEXT NOT NULL
+            expires_at TEXT NOT NULL,
+            lookup TEXT NOT NULL,
+            PRIMARY KEY (lookup)
         )
+    """)
+    await db.execute(f"""
+        CREATE INDEX IF NOT EXISTS idx_password_resets_user 
+        ON {PASSWORD_RESETS_TABLE}(user_id)
     """)
 
     await db.execute(f"""
@@ -121,6 +141,72 @@ async def create_verification_token(db: Database, user_id: str, email: str) -> s
         (token, user_id, email, expires_at),
     )
     return token
+
+
+async def create_password_reset_token(db: Database, user_id: str, email: str) -> str:
+    """Insert a new 1-hour password reset token (hashed in DB).
+
+    Any prior tokens for the same ``user_id`` are deleted first.
+
+    Returns the raw token string (sent to user), not the hash.
+    """
+    token = str(uuid.uuid4())
+    token_hash = hash_jti(token)
+    lookup = hash_jti(token + email)  # token + email order for lookup
+    expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    await db.execute(
+        f"DELETE FROM {PASSWORD_RESETS_TABLE} WHERE user_id = ?", (user_id,)
+    )
+    await db.execute(
+        f"INSERT INTO {PASSWORD_RESETS_TABLE} "
+        "(token, user_id, expires_at, lookup) VALUES (?, ?, ?, ?)",
+        (token_hash, user_id, expires_at, lookup),
+    )
+    return token
+
+
+async def verify_password_reset_token(db: Database, email: str, token: str) -> bool:
+    """Verify a password reset token.
+
+    Uses lookup key for efficient verification.
+    Returns True if valid and not expired.
+    """
+    lookup = hash_jti(token + email)
+    row = await db.fetch_one(
+        f"SELECT * FROM {PASSWORD_RESETS_TABLE} WHERE lookup = ?",
+        (lookup,),
+    )
+    if row is None:
+        return False
+    now = datetime.now(timezone.utc).isoformat()
+    if row["expires_at"] < now:
+        return False
+    return True
+
+
+async def delete_password_reset_token(db: Database, email: str, token: str) -> None:
+    """Delete a password reset token after use."""
+    lookup = hash_jti(token + email)
+    await db.execute(
+        f"DELETE FROM {PASSWORD_RESETS_TABLE} WHERE lookup = ?",
+        (lookup,),
+    )
+
+
+async def lookup_password_reset_token(db: Database, email: str, token: str) -> dict | None:
+    """Look up a password reset token by email and raw token."""
+    lookup = hash_jti(token + email)  # token + email order
+    row = await db.fetch_one(
+        f"SELECT * FROM {PASSWORD_RESETS_TABLE} WHERE lookup = ?",
+        (lookup,),
+    )
+    return dict(row) if row else None
+
+
+async def get_password_reset_user_id(db: Database, email: str, token: str) -> str | None:
+    """Get user_id from password reset token."""
+    reset = await lookup_password_reset_token(db, email, token)
+    return reset["user_id"] if reset else None
 
 
 async def cleanup_expired_verifications(db: Database) -> None:

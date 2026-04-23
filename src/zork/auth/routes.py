@@ -19,13 +19,17 @@ from zork.auth.models import (
     PASSWORD_RESETS_TABLE,
     USERS_TABLE,
     block_token,
+    create_password_reset_token,
     create_verification_token,
+    delete_password_reset_token,
     delete_refresh_token,
     enforce_refresh_token_limit,
     get_refresh_token_by_jti,
     is_blocked,
+    lookup_password_reset_token,
     revoke_all_user_refresh_tokens,
     store_refresh_token,
+    verify_password_reset_token,
 )
 from zork.auth.passwords import hash_password, verify_password
 from zork.auth.tokens import (
@@ -229,11 +233,11 @@ def build_auth_routes(
             f"SELECT * FROM {USERS_TABLE} WHERE email = ?", (email,)
         )
         if user is None:
-            raise ZorkError(401, "Invalid email or password")
+            raise ZorkError(401, "Invalid credentials")
 
         user = dict(user)
         if not verify_password(password, user["password"]):
-            raise ZorkError(401, "Invalid email or password")
+            raise ZorkError(401, "Invalid credentials")
 
         if not user["is_active"]:
             raise ZorkError(403, "Account is disabled")
@@ -299,6 +303,11 @@ def build_auth_routes(
             if not refresh_tok:
                 raise ZorkError(401, "Refresh token required")
 
+            if delivery.supports_csrf:
+                csrf_token = await delivery.extract_csrf_token(request)
+                if not csrf_token:
+                    raise ZorkError(403, "CSRF token required")
+
             payload = decode_token(refresh_tok, secret)
             if not verify_token_type(payload, TOKEN_TYPE_REFRESH):
                 raise ZorkError(401, "Invalid token type")
@@ -310,14 +319,20 @@ def build_auth_routes(
             if not stored:
                 raise ZorkError(401, "Refresh token not found")
 
+            # Get current user role from DB (not trusting token role)
+            user = await db.fetch_one(
+                f"SELECT role FROM {USERS_TABLE} WHERE id = ?", (payload["sub"],)
+            )
+            current_role = user["role"] if user else payload["role"]
+
             await blocklist.block(payload["jti"], int(payload["exp"]))
             await delete_refresh_token(db, payload["jti"])
 
             new_access = create_access_token(
-                payload["sub"], payload["role"], auth.access_token_expiry, secret
+                payload["sub"], current_role, auth.access_token_expiry, secret
             )
             new_refresh = create_refresh_token(
-                payload["sub"], payload["role"], auth.refresh_token_expiry, secret
+                payload["sub"], current_role, auth.refresh_token_expiry, secret
             )
 
             from zork.auth.tokens import decode_token as dt
@@ -356,17 +371,12 @@ def build_auth_routes(
         )
         if user:
             user = dict(user)
-            reset_token = str(uuid.uuid4())
-            expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
-            await db.execute(
-                f"INSERT INTO {PASSWORD_RESETS_TABLE} (token, user_id, expires_at) VALUES (?, ?, ?)",
-                (reset_token, user["id"], expires_at),
-            )
+            reset_token = await create_password_reset_token(db, user["id"], email)
             if email_config is not None:
                 from zork.email.backends import EmailMessage
 
                 reset_url = (
-                    f"{email_config._base_url}/reset-password?token={reset_token}"
+                    f"{email_config._base_url}/reset-password?token={reset_token}&email={email}"
                 )
                 subject, html, text = email_config._render_password_reset(reset_url)
                 await email_config.send(
@@ -391,35 +401,30 @@ def build_auth_routes(
     async def reset_password(request: Request) -> JSONResponse:
         body = await request.json()
         token = body.get("token")
+        email = body.get("email")
         new_password = body.get("new_password")
 
-        if not token or not new_password:
-            raise ZorkError(400, "Token and new_password are required")
+        if not token or not email or not new_password:
+            raise ZorkError(400, "Token, email, and new_password are required")
 
-        reset = await db.fetch_one(
-            f"SELECT * FROM {PASSWORD_RESETS_TABLE} WHERE token = ?", (token,)
-        )
+        reset = await lookup_password_reset_token(db, email, token)
         if reset is None:
             raise ZorkError(400, "Invalid or expired reset token")
 
-        reset = dict(reset)
         now = datetime.now(timezone.utc).isoformat()
         if reset["expires_at"] < now:
-            await db.execute(
-                f"DELETE FROM {PASSWORD_RESETS_TABLE} WHERE token = ?", (token,)
-            )
+            await delete_password_reset_token(db, email, token)
             raise ZorkError(400, "Invalid or expired reset token")
 
+        user_id = reset["user_id"]
         hashed = hash_password(new_password)
         await db.execute(
             f"UPDATE {USERS_TABLE} SET password = ?, updated_at = ? WHERE id = ?",
-            (hashed, now, reset["user_id"]),
+            (hashed, now, user_id),
         )
-        await db.execute(
-            f"DELETE FROM {PASSWORD_RESETS_TABLE} WHERE token = ?", (token,)
-        )
+        await delete_password_reset_token(db, email, token)
 
-        await revoke_all_user_refresh_tokens(db, reset["user_id"])
+        await revoke_all_user_refresh_tokens(db, user_id)
 
         return JSONResponse({"message": "Password updated"})
 

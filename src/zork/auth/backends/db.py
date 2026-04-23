@@ -36,7 +36,11 @@ class DatabaseBlocklist(TokenBlocklistBackend):
         result = await self._db.execute(
             f"DELETE FROM {TOKEN_BLOCKLIST_TABLE} WHERE expires_at < ?", (now,)
         )
-        return 1
+        # result may be a Cursor or have rowcount attribute
+        try:
+            return result.rowcount if hasattr(result, 'rowcount') else 1
+        except Exception:
+            return 1
 
 
 class HashedTokenBlocklist:
