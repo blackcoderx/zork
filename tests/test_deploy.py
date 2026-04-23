@@ -427,3 +427,113 @@ class TestDeployCLI:
         new_content = (output_dir / "railway.toml").read_text()
         assert "old content" not in new_content
         assert "NIXPACKS" in new_content
+
+
+# ---------------------------------------------------------------------------
+# Introspection Tests
+# ---------------------------------------------------------------------------
+
+
+class TestIntrospect:
+    def test_introspect_sqlite_by_default(self, tmp_path, monkeypatch):
+        from zork.deploy.introspect import introspect
+
+        app_file = tmp_path / "main.py"
+        app_file.write_text(
+            'from zork import Zork\napp = Zork(database="app.db", title="Test")\n'
+        )
+        monkeypatch.delenv("ZORK_DATABASE_URL", raising=False)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        monkeypatch.delenv("ZORK_REDIS_URL", raising=False)
+
+        profile = introspect(str(app_file))
+
+        assert profile.app_module == "main"
+        assert profile.app_variable == "app"
+        assert profile.needs_sqlite is True
+        assert profile.needs_postgres is False
+        assert profile.needs_mysql is False
+        assert profile.needs_redis is False
+
+    def test_introspect_postgres_via_env(self, tmp_path, monkeypatch):
+        from zork.deploy.introspect import introspect
+
+        app_file = tmp_path / "main.py"
+        app_file.write_text(
+            'from zork import Zork\napp = Zork(database="app.db", title="Test")\n'
+        )
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/db")
+        monkeypatch.delenv("ZORK_REDIS_URL", raising=False)
+
+        profile = introspect(str(app_file))
+
+        assert profile.needs_postgres is True
+        assert profile.needs_sqlite is False
+        assert "postgres" in profile.optional_groups
+
+    def test_introspect_mysql_via_env(self, tmp_path, monkeypatch):
+        from zork.deploy.introspect import introspect
+
+        app_file = tmp_path / "main.py"
+        app_file.write_text(
+            'from zork import Zork\napp = Zork(database="app.db", title="Test")\n'
+        )
+        monkeypatch.setenv("DATABASE_URL", "mysql://user:pass@localhost/db")
+        monkeypatch.delenv("ZORK_REDIS_URL", raising=False)
+
+        profile = introspect(str(app_file))
+
+        assert profile.needs_mysql is True
+        assert profile.needs_sqlite is False
+
+    def test_introspect_redis_via_env(self, tmp_path, monkeypatch):
+        from zork.deploy.introspect import introspect
+
+        app_file = tmp_path / "main.py"
+        app_file.write_text(
+            'from zork import Zork\napp = Zork(database="app.db", title="Test")\n'
+        )
+        monkeypatch.setenv("ZORK_REDIS_URL", "redis://localhost:6379/0")
+
+        profile = introspect(str(app_file))
+
+        assert profile.needs_redis is True
+        assert "redis" in profile.optional_groups
+
+    def test_introspect_project_name_from_pyproject(self, tmp_path, monkeypatch):
+        from zork.deploy.introspect import _detect_project_name
+
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "my-awesome-project"\n'
+        )
+
+        name = _detect_project_name(tmp_path)
+
+        assert name == "my-awesome-project"
+
+    def test_introspect_project_name_fallback(self, tmp_path):
+        from zork.deploy.introspect import _detect_project_name
+
+        name = _detect_project_name(tmp_path)
+
+        assert name == tmp_path.name
+
+    def test_introspect_python_version_from_pyproject(self, tmp_path):
+        from zork.deploy.introspect import _detect_python_version
+
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nrequires-python = ">=3.11"\n'
+        )
+
+        version = _detect_python_version(tmp_path)
+
+        assert version == "3.11"
+
+    def test_introspect_python_version_fallback(self, tmp_path):
+        from zork.deploy.introspect import _detect_python_version
+
+        version = _detect_python_version(tmp_path)
+
+        import sys
+
+        assert version == f"{sys.version_info.major}.{sys.version_info.minor}"
