@@ -43,13 +43,22 @@ all = [
     "asyncpg>=0.29.0",
     "aiomysql>=0.2.0",
 ]
-dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0", "httpx>=0.27.0", "fakeredis>=2.20.0"]
+dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0", "httpx>=0.27.0", "fakeredis>=2.20.0", "ruff>=0.8.0"]
 
 [project.scripts]
 zork = "zork.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/zork"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+output-format = "full"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
