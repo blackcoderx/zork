@@ -2,9 +2,9 @@
 
 <p align="center">
 
-[![PyPI version](https://img.shields.io/pypi/v/zork-api?color=f47b20&label=zork&style=flat-square)](https://pypi.org/project/zork-api/)
+[![PyPI version](https://img.shields.io/pypi/v/zork-api/1.0.1?color=f47b20&label=zork&style=flat-square)](https://pypi.org/project/zork-api/)
 [![CI](https://github.com/blackcoderx/zork/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/blackcoderx/zork/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/pypi/pyversions/zork-api?color=3572A5&style=flat-square)](https://pypi.org/project/zork-api/)
+[![Python](https://img.shields.io/pypi/pyversions/zork-api?color=3572A5&style=flat-square&cacheSeconds=3600)](https://pypi.org/project/zork-api/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
 

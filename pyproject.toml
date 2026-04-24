@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "zork-api"
-version = "1.0.0"
+version = "1.0.1"
 description = "A lightweight backend framework for Python. Build production-ready REST APIs with built-in auth and dynamic collections."
 readme = "README.md"
 license = "MIT"
