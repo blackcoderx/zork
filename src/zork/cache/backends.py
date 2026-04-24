@@ -12,9 +12,7 @@ Custom backends: subclass :class:`CacheBackend` and pass an instance to
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import time
 from abc import ABC, abstractmethod
 
 logger = logging.getLogger("zork.cache.backends")

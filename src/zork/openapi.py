@@ -4,7 +4,7 @@ import json
 from typing import Any
 
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse
 from starlette.routing import Route
 
 from zork.collections.schema import (
@@ -20,7 +20,6 @@ from zork.collections.schema import (
     TextField,
     URLField,
 )
-
 
 SWAGGER_HTML = """<!DOCTYPE html>
 <html>

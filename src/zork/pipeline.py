@@ -6,9 +6,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from zork.errors import ZorkError
-from zork.auth.tokens import decode_token
 from zork.auth.models import is_blocked
+from zork.auth.tokens import decode_token
+from zork.errors import ZorkError
 from zork.hooks.context import ZorkContext
 from zork.hooks.runner import HookRunner
 
@@ -154,7 +154,6 @@ def build_middleware_stack(
             max_age=cors_config.get("max_age"),
         )
     else:
-        from starlette.middleware import Middleware
         from starlette.middleware.base import BaseHTTPMiddleware
 
         class DisabledCORSMiddleware(BaseHTTPMiddleware):

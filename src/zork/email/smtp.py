@@ -272,7 +272,7 @@ class SMTPBackend(EmailBackend):
                 ),
                 timeout=float(self._timeout),
             )
-        except asyncio.TimeoutError as exc:
+        except asyncio.TimeoutError:
             if retries_left <= 1:
                 raise
             logger.warning(

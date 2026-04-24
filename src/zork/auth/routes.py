@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -16,28 +16,22 @@ from zork.auth.delivery import (
 )
 from zork.auth.models import (
     EMAIL_VERIFICATIONS_TABLE,
-    PASSWORD_RESETS_TABLE,
     USERS_TABLE,
-    block_token,
     create_password_reset_token,
     create_verification_token,
     delete_password_reset_token,
     delete_refresh_token,
     enforce_refresh_token_limit,
     get_refresh_token_by_jti,
-    is_blocked,
     lookup_password_reset_token,
     revoke_all_user_refresh_tokens,
     store_refresh_token,
-    verify_password_reset_token,
 )
 from zork.auth.passwords import hash_password, verify_password
 from zork.auth.tokens import (
-    TOKEN_TYPE_ACCESS,
     TOKEN_TYPE_REFRESH,
     create_access_token,
     create_refresh_token,
-    create_token,
     decode_token,
     verify_token_type,
 )
@@ -200,7 +194,6 @@ def build_auth_routes(
         # Send email verification link (non-blocking; silent if no backend configured)
         if email_config is not None:
             from zork.email.backends import EmailMessage
-            from zork.email.templates import email_verification_email
 
             ver_token = await create_verification_token(db, user_id, email)
             verify_url = (

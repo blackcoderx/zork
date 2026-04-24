@@ -32,6 +32,7 @@ from zork.db.connection import Database
 from zork.hooks.context import ZorkContext
 from zork.hooks.registry import HookRegistry
 from zork.hooks.runner import HookRunner
+from zork.logging import configure_from_env
 from zork.pipeline import build_middleware_stack
 from zork.ratelimit.backends import (
     MemoryRateLimitBackend,
@@ -41,7 +42,6 @@ from zork.ratelimit.backends import (
 from zork.ratelimit.middleware import RateLimitMiddleware, RateLimitRule
 from zork.realtime import RealtimeFacade
 from zork.realtime.broker import RealtimeBroker
-from zork.logging import configure_from_env
 from zork.staticfiles import StaticFilesConfig, mount_static_files
 
 logger = logging.getLogger("zork")

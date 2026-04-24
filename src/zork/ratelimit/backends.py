@@ -64,7 +64,7 @@ class MemoryRateLimitBackend(RateLimitBackend):
     async def check(self, key: str, limit: int, window_seconds: int) -> RateLimitResult:
         if limit <= 0 or window_seconds <= 0:
             raise ValueError(f"limit and window_seconds must be positive, got limit={limit}, window={window_seconds}")
-        
+
         now = time.monotonic()
         window_start = now - window_seconds
         window = self._windows[key]
@@ -152,7 +152,7 @@ class RedisRateLimitBackend(RateLimitBackend):
     async def check(self, key: str, limit: int, window_seconds: int) -> RateLimitResult:
         if limit <= 0 or window_seconds <= 0:
             raise ValueError(f"limit and window_seconds must be positive, got limit={limit}, window={window_seconds}")
-        
+
         r = await self._redis()
         now_ms = time.time() * 1000
         window_ms = window_seconds * 1000

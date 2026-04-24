@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import hashlib
-import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
-from zork.db.connection import Database
-
+from zork.auth.backends.base import TokenBlocklistBackend
 from zork.auth.models import (
     TOKEN_BLOCKLIST_TABLE,
+)
+from zork.auth.models import (
     block_token as db_block_token,
+)
+from zork.auth.models import (
     is_blocked as db_is_blocked,
 )
-from zork.auth.backends.base import TokenBlocklistBackend
+from zork.db.connection import Database
 
 
 class DatabaseBlocklist(TokenBlocklistBackend):

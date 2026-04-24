@@ -5,8 +5,9 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from starlette.routing import Route, WebSocketRoute
 
+from zork.realtime.bridge import default_envelope
+from zork.realtime.bridge import install as install_bridge
 from zork.realtime.broker import RealtimeBroker
-from zork.realtime.bridge import default_envelope, install as install_bridge
 from zork.realtime.sse import sse_endpoint_factory
 from zork.realtime.websocket import ws_endpoint_factory
 

@@ -6,7 +6,7 @@ import sys
 from typing import Any, Literal
 
 import structlog
-from structlog.processors import TimeStamper, add_log_level
+from structlog.processors import TimeStamper
 from structlog.stdlib import LoggerFactory
 
 

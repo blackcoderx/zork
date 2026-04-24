@@ -1,6 +1,6 @@
 # Zork migration system
+from .diff import AddColumn, AddIndex, AddTable, DropColumn, DropIndex, SchemaComparator
 from .engine import MigrationEngine, MigrationFile
-from .diff import SchemaComparator, AddTable, AddColumn, DropColumn, AddIndex, DropIndex
 from .generator import (
     generate_migration_content,
     generate_migration_id,

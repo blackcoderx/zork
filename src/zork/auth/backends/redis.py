@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import time
 
-from zork.cache.redis_client import get_client
 from zork.auth.backends.base import TokenBlocklistBackend
+from zork.cache.redis_client import get_client
 
 KEY_PREFIX = "zork:blocklist:"
 

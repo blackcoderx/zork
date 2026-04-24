@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from textwrap import dedent
 
 from zork.deploy.platforms.base import GeneratedFile, PlatformGenerator

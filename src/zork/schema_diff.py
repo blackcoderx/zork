@@ -15,7 +15,6 @@ import json
 import logging
 from dataclasses import dataclass
 from difflib import get_close_matches
-from typing import Any
 
 from zork.collections.schema import Collection
 from zork.db.connection import Database

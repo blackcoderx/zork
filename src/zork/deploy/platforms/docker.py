@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from textwrap import dedent
 
-from zork.deploy.introspect import AppProfile
 from zork.deploy.platforms.base import GeneratedFile, PlatformGenerator
 
 
